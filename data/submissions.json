@@ -16,5 +16,11 @@
       "game_id": "tales-of-symphonia-2003",
       "priority": false
     }
+  ],
+  "Vincent": [
+    {
+      "game_id": "truck-simulator-2",
+      "priority": false
+    }
   ]
 }

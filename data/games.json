@@ -101,5 +101,31 @@
     "steam_appid": null,
     "price": null,
     "metadata_fetched_at": "2026-10-16T19:38:19+00:00"
+  },
+  {
+    "id": "truck-simulator-2",
+    "title": "Truck Simulator",
+    "rawg_id": 581236,
+    "cover_url": "https://media.rawg.io/media/screenshots/b9d/b9d7c2661e5857a9c0f6e8cd449f54d3_FSSZMOy.jpg",
+    "genres": [
+      "Adventure",
+      "Simulation"
+    ],
+    "is_indie": false,
+    "is_coop": false,
+    "platforms": [
+      "iOS"
+    ],
+    "hours_main": null,
+    "rawg_playtime": null,
+    "steam_appid": 227300,
+    "price": {
+      "amount": 19.99,
+      "currency": "EUR",
+      "formatted": "19,99€",
+      "is_free": false,
+      "fetched_at": "2026-10-16T20:05:01+00:00"
+    },
+    "metadata_fetched_at": "2026-10-16T20:05:00+00:00"
   }
 ]
