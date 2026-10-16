@@ -25,6 +25,10 @@
     {
       "game_id": "call-of-duty-vanguard",
       "priority": false
+    },
+    {
+      "game_id": "train-simulator",
+      "priority": false
     }
   ]
 }
