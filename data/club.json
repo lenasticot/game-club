@@ -1,5 +1,38 @@
 {
-  "players": [],
+  "players": [
+    {
+      "id": "Vincent",
+      "name": "Vincent",
+      "platforms": [
+        "PC"
+      ],
+      "active": true
+    },
+    {
+      "id": "Brandon",
+      "name": "Brandon",
+      "platforms": [
+        "Switch"
+      ],
+      "active": true
+    },
+    {
+      "id": "Steph",
+      "name": "Stephan",
+      "platforms": [
+        "Switch"
+      ],
+      "active": true
+    },
+    {
+      "id": "Leno",
+      "name": "Lena",
+      "platforms": [
+        "Switch"
+      ],
+      "active": true
+    }
+  ],
   "rotations": [],
   "price_country": "nl"
 }
