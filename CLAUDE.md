@@ -160,28 +160,37 @@ Derive fairness state from history; don't store counters.
 
 ## Status
 
-Done: `gameclub/draw.py` (rotation cycles, backtracking draw, indie fallback,
+Done and **live on Render** (real players — Leno, Steph, Vincent, Brandon —
+have added real games and finalized lists through the deployed site):
+`gameclub/draw.py` (rotation cycles, backtracking draw, indie fallback,
 max-length rule, priority-star weighting), `store.py` (JSON I/O,
-`player_secrets.json` split out for discord_id/steam_id), `rawg.py`,
-`prices.py` (Steam price + unofficial `storesearch`), `rounds.py` (draw,
-announcement, Discord webhook), CLI (`python3 -m gameclub`, with
-`--priority` on `list set` and `--discord-id`/`--steam-id` on `player add`).
-Entry-site backend: `web/app.py` (Flask: whoami picker, list add/remove/
-priority, game search+add from RAWG with Steam-match confirm) and
-`web/git_sync.py` (commit+push `data/` after each write), with templates in
-`web/templates/`. 33 tests passing (`tests/test_web.py` runs real git
-commits against a throwaway repo, mocks RAWG/Steam), `mypy --strict` and
-`flake8` clean (`gameclub`, `web`, `tests`). Manually smoke-tested the live
-dev server end to end (whoami → add/remove/priority → catalog search → git
-commit each step) in a scratch dir. Repo is public on GitHub, `main` pushed.
+`player_secrets.json` split out, `finalized` state), `rawg.py`, `prices.py`
+(Steam price + unofficial `storesearch`), `rounds.py` (draw, announcement,
+Discord webhook), CLI (`python3 -m gameclub`). Entry site (`web/app.py`,
+Flask): whoami picker, list add/remove/priority/finalize, game search+add
+(catalog → RAWG → confirm Steam price match, no co-op/indie/hours confirm
+step — RAWG's guess trusted as-is), `/players` (live-ish, 6s poll),
+`/games` (full catalog browse), `/round` (reveal: horizontal spinning
+cover-reel per slot, landing on the real pick — verified live). Git push
+is async (background thread) so a write doesn't block on the network;
+commit stays sync so data is never at risk. Render boot script
+(`render-start.sh`) clones via HTTPS+token, no persistent disk needed.
+40 tests passing, `mypy --strict` and `flake8` clean (`gameclub`, `web`,
+`tests`).
 
-Next: write the Render boot script (clone via HTTPS+GitHub token, no SSH)
-and `render.yaml`/service config → deploy → get a RAWG key for live
-metadata → enter real players (pseudonyms) and lists through the site →
-round 1 → static display site (Astro + Svelte island, not started).
-
-Open: none blocking on the backend/hosting side. The Discord webhook post
-is untested against a real webhook.
+Next:
+- **UI/visual design pass** — explicitly not done yet, player feedback
+  2026-10-16 ("we will have to work on the overall rendering"). Next
+  session: use a design-focused agent/subagent for this, not ad-hoc CSS
+  tweaks — current styling is functional-only, placeholder dark theme.
+- Confirm Render Auto-Deploy is off (was causing crashes around the 3rd
+  game add before this was diagnosed 2026-10-16) and RAWG_API_KEY is set
+  and working live.
+- Run an actual `python3 -m gameclub draw` against the real live `data/`
+  once lists are ready for round 1 (draw stays CLI/admin-only by design).
+- Discord webhook post still untested against a real webhook.
+- Static display site idea is dropped — reveal lives in the Flask app
+  (`/round`), see Decided above.
 
 ## Working notes
 
