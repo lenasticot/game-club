@@ -181,5 +181,31 @@
       "fetched_at": "2026-10-16T20:06:02+00:00"
     },
     "metadata_fetched_at": "2026-10-16T20:06:01+00:00"
+  },
+  {
+    "id": "pirate-2",
+    "title": "Pirate",
+    "rawg_id": 268322,
+    "cover_url": "https://media.rawg.io/media/screenshots/c97/c979e07842b0b97839c83fcb4f89e3af.jpg",
+    "genres": [
+      "Action",
+      "Simulation"
+    ],
+    "is_indie": true,
+    "is_coop": false,
+    "platforms": [
+      "PC"
+    ],
+    "hours_main": null,
+    "rawg_playtime": null,
+    "steam_appid": 678470,
+    "price": {
+      "amount": 5.66,
+      "currency": "EUR",
+      "formatted": "5,66€",
+      "is_free": false,
+      "fetched_at": "2026-10-16T20:06:21+00:00"
+    },
+    "metadata_fetched_at": "2026-10-16T20:06:20+00:00"
   }
 ]
