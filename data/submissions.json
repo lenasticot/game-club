@@ -3,6 +3,10 @@
     {
       "game_id": "hades-ii",
       "priority": false
+    },
+    {
+      "game_id": "it-takes-two-2",
+      "priority": false
     }
   ]
 }
