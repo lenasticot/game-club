@@ -40,5 +40,11 @@
       "game_id": "age-of-empires-iii-complete-collection",
       "priority": false
     }
+  ],
+  "Steph": [
+    {
+      "game_id": "worms-armageddon",
+      "priority": false
+    }
   ]
 }

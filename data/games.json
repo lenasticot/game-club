@@ -227,5 +227,34 @@
     "steam_appid": 105450,
     "price": null,
     "metadata_fetched_at": "2026-10-16T20:06:37+00:00"
+  },
+  {
+    "id": "worms-armageddon",
+    "title": "Worms Armageddon",
+    "rawg_id": 20466,
+    "cover_url": "https://media.rawg.io/media/games/96a/96a48ac7487d9db9179d83170afcb16a.jpg",
+    "genres": [
+      "Strategy"
+    ],
+    "is_indie": false,
+    "is_coop": true,
+    "platforms": [
+      "Nintendo 64",
+      "Game Boy Color",
+      "PlayStation",
+      "PC",
+      "Dreamcast"
+    ],
+    "hours_main": null,
+    "rawg_playtime": 2,
+    "steam_appid": 217200,
+    "price": {
+      "amount": 14.99,
+      "currency": "EUR",
+      "formatted": "14,99€",
+      "is_free": false,
+      "fetched_at": "2026-10-16T20:07:39+00:00"
+    },
+    "metadata_fetched_at": "2026-10-16T20:07:31+00:00"
   }
 ]
