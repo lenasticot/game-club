@@ -45,6 +45,10 @@
     {
       "game_id": "worms-armageddon",
       "priority": false
+    },
+    {
+      "game_id": "tron",
+      "priority": false
     }
   ]
 }

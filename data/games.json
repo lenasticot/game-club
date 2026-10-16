@@ -256,5 +256,28 @@
       "fetched_at": "2026-10-16T20:07:39+00:00"
     },
     "metadata_fetched_at": "2026-10-16T20:07:31+00:00"
+  },
+  {
+    "id": "tron",
+    "title": "TRON",
+    "rawg_id": 29148,
+    "cover_url": "https://media.rawg.io/media/screenshots/57a/57a65e51065b249f09f03acea1bd5358.jpg",
+    "genres": [],
+    "is_indie": false,
+    "is_coop": true,
+    "platforms": [
+      "Xbox 360"
+    ],
+    "hours_main": null,
+    "rawg_playtime": null,
+    "steam_appid": 327740,
+    "price": {
+      "amount": 9.75,
+      "currency": "EUR",
+      "formatted": "9,75€",
+      "is_free": false,
+      "fetched_at": "2026-10-16T20:08:22+00:00"
+    },
+    "metadata_fetched_at": "2026-10-16T20:08:12+00:00"
   }
 ]
