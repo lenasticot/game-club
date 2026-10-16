@@ -35,6 +35,10 @@
     {
       "game_id": "pirate-2",
       "priority": false
+    },
+    {
+      "game_id": "age-of-empires-iii-complete-collection",
+      "priority": false
     }
   ]
 }
