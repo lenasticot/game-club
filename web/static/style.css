@@ -66,9 +66,25 @@ ul.results li {
   align-items: center;
   padding: 0.4rem 0;
   border-bottom: 1px solid #333;
+  gap: 0.5rem;
+}
+ul.results.scrollable { max-height: 320px; overflow-y: auto; }
+.result-info { display: flex; align-items: center; gap: 0.6rem; }
+.result-info img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 0.3rem;
+  flex-shrink: 0;
 }
 
 label { display: block; margin: 0.5rem 0; }
 .warning { color: #ff8080; }
+.success { color: #7cd992; }
+.success-tag { background: #2f5c3a; color: #7cd992; }
+.player-section { margin-bottom: 1.5rem; }
+.nav { display: flex; gap: 1rem; }
+.nav a { color: #ccc; text-decoration: none; font-size: 0.9rem; }
+.nav a:hover { color: #fff; }
 .hint { color: #999; font-size: 0.9rem; }
 .cover { max-width: 200px; border-radius: 0.5rem; }

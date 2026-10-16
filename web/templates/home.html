@@ -6,6 +6,14 @@
     <p class="warning">Your list needs at least one unplayed co-op game
       before a round can draw from it.</p>
   {% endif %}
+  {% if finalize_error %}<p class="warning">{{ finalize_error }}</p>{% endif %}
+  {% if finalized %}
+    <p class="success">You're marked done for the next round.</p>
+  {% else %}
+    <form action="{{ url_for('list_finalize') }}" method="post">
+      <button type="submit">I'm done, finalize my list</button>
+    </form>
+  {% endif %}
 
   <table class="list">
     <tbody>
@@ -52,10 +60,13 @@
   {% if query %}
     {% if catalog_matches %}
       <h3>Already in the club</h3>
-      <ul class="results">
+      <ul class="results scrollable">
         {% for g in catalog_matches %}
           <li>
-            {{ g.title }}
+            <span class="result-info">
+              {% if g.cover_url %}<img src="{{ g.cover_url }}" alt="">{% endif %}
+              {{ g.title }}
+            </span>
             <form action="{{ url_for('list_add') }}" method="post" class="inline">
               <input type="hidden" name="game_id" value="{{ g.id }}">
               <button type="submit">Add to my list</button>
@@ -67,10 +78,13 @@
 
     <h3>Find online</h3>
     {% if rawg_matches %}
-      <ul class="results">
+      <ul class="results scrollable">
         {% for r in rawg_matches %}
           <li>
-            {{ r.name }} {% if r.released %}({{ r.released[:4] }}){% endif %}
+            <span class="result-info">
+              {% if r.background_image %}<img src="{{ r.background_image }}" alt="">{% endif %}
+              {{ r.name }} {% if r.released %}({{ r.released[:4] }}){% endif %}
+            </span>
             <a href="{{ url_for('games_new', slug=r.slug) }}">Select</a>
           </li>
         {% endfor %}

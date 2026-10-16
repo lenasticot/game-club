@@ -134,15 +134,14 @@ class TestWeb(unittest.TestCase):
 
             with patch("gameclub.prices.steam_price", return_value=None):
                 r = self.client.post("/games/new", data={
-                    "slug": "new-slug", "is_coop": "on",
-                    "hours": "12", "steam_appid": "42",
+                    "slug": "new-slug", "steam_appid": "42",
                 })
         self.assertEqual(r.status_code, 302)
         store = Store(self.data)
         self.assertTrue(store.has_game("new-slug"))
         game = store.game("new-slug")
-        self.assertTrue(game["is_coop"])
-        self.assertEqual(game["hours_main"], 12.0)
+        self.assertTrue(game["is_coop"])  # RAWG's own guess, no form override
+        self.assertIsNone(game["hours_main"])  # never set from the form
         self.assertEqual(game["steam_appid"], 42)
         self.assertIn({"game_id": "new-slug", "priority": False},
                       store.submissions["bob"])
@@ -157,6 +156,48 @@ class TestWeb(unittest.TestCase):
         self.assertEqual(len(store.games), 1)
         self.assertIn({"game_id": "existing-coop", "priority": False},
                       store.submissions["alice"])
+
+    def test_finalize_succeeds_and_shows_in_players_api(self) -> None:
+        self.pick("alice")
+        self.client.post("/list/add", data={"game_id": "existing-coop"})
+        r = self.client.post("/list/finalize")
+        self.assertEqual(r.status_code, 302)
+        store = Store(self.data)
+        self.assertTrue(store.is_finalized("alice"))
+        self.assertIn("finalized list", self.log())
+
+        api = self.client.get("/api/players")
+        alice = next(p for p in api.get_json() if p["id"] == "alice")
+        self.assertTrue(alice["finalized"])
+        self.assertEqual(alice["games"][0]["title"], "Existing Coop")
+
+    def test_finalize_fails_without_coop_game(self) -> None:
+        self.pick("bob")
+        r = self.client.post("/list/finalize", follow_redirects=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"co-op", r.data)
+        store = Store(self.data)
+        self.assertFalse(store.is_finalized("bob"))
+
+    def test_editing_after_finalize_unfinalizes(self) -> None:
+        self.pick("alice")
+        self.client.post("/list/add", data={"game_id": "existing-coop"})
+        self.client.post("/list/finalize")
+        self.client.post("/list/remove", data={"game_id": "existing-coop"})
+        store = Store(self.data)
+        self.assertFalse(store.is_finalized("alice"))
+
+    def test_games_page_lists_catalog(self) -> None:
+        self.pick("alice")
+        r = self.client.get("/games")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Existing Coop", r.data)
+
+    def test_players_page_loads(self) -> None:
+        self.pick("alice")
+        r = self.client.get("/players")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"api/players", r.data)
 
 
 if __name__ == "__main__":

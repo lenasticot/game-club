@@ -66,6 +66,7 @@ def run_draw(store: Store, seed: str, now: str) -> RoundRec:
                        game_id=p.game.id) for p in picks],
     )
     store.rounds.append(rec)
+    store.clear_finalized()
     return rec
 
 

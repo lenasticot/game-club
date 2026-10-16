@@ -53,13 +53,34 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
   via the CLI (unchanged); the site shows a name picker, stores the choice
   in a signed session cookie. The site URL itself is the "closed" gate.
 - **Entry-site game add**: players add games themselves, not admin-only.
-  Flow: search the local catalog first, else search RAWG → pick a result →
-  confirm/override co-op/indie flags + enter hours by hand → confirm a
-  Steam price match (RAWG's own guess, or a fallback search against Steam's
-  unofficial `storesearch` endpoint, checked live 2026-10-16) or skip price.
-  Flags (`is_coop`/`is_indie`) stay attributes of the shared game, not
-  per-player; whoever last edits a game's flags changes them for everyone
-  (trust-based, fine for a 4-5 friend group).
+  Flow: search the local catalog first (with cover thumbnails), else search
+  RAWG (thumbnails too) → pick a result → confirm a Steam price match
+  (RAWG's own guess, or a fallback search against Steam's unofficial
+  `storesearch` endpoint, checked live 2026-10-16) or skip price. No
+  co-op/indie confirm step and no manual hours entry on add — RAWG's own
+  guess is trusted as-is, hours shown as a RAWG-fetched indication only
+  (rejected as unnecessary friction; player feedback 2026-10-16). Flags
+  stay editable later via CLI `game set` (admin only) if wrong — whoever
+  last edits a game's flags changes them for everyone (trust-based, fine
+  for a 4-5 friend group).
+- **Finalize button**: a player marks their list "done" for the next round
+  (`club.json` `finalized: [player_id]`, cleared on `rounds.run_draw`). Any
+  further list edit (add/remove/priority) clears their own finalized flag
+  again. Requires the list to already pass `validate_submission` (≥1
+  unplayed co-op, ≤10) — finalizing with fewer than 10 is fine, there's no
+  minimum count.
+- **Everyone's lists page** (`/players`): read-only, auto-refreshes via a
+  small vanilla-JS poll against `/api/players` every 6s — no WebSocket/SSE,
+  "live enough" for a few friends checking a casual list.
+- **All games page** (`/games`): browse the full shared catalog (title,
+  cover, flags, hours indication, played tag), separate from the per-list
+  search results.
+- **Render auto-deploy must stay off** for the entry-site service. The
+  app's own writes push to GitHub (`git_sync`); with auto-deploy on, every
+  single player action re-triggers a redeploy of the live service, which
+  can crash mid-request (found live 2026-10-16, after ~3 game-adds).
+  Deploys happen manually (dashboard → "Deploy latest commit") when *code*
+  changes.
 - **Entry-site writes**: Flask app wraps `gameclub.store.Store` directly
   (same code the CLI uses), then `git commit`+`push`es `data/` itself
   (`web/git_sync.py`), serialized with a lock. Keeps git as the audit trail

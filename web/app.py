@@ -11,12 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from flask import (Flask, abort, redirect, render_template, request,
-                   session, url_for)
+from flask import (Flask, abort, jsonify, redirect, render_template,
+                   request, session, url_for)
 from flask.typing import ResponseReturnValue
 
 from gameclub import prices, rawg
-from gameclub.draw import MAX_LIST_SIZE, DrawError
+from gameclub.draw import MAX_LIST_SIZE, DrawError, validate_submission
 from gameclub.store import GameRec, Store, StoreError
 from web import git_sync
 
@@ -46,6 +46,10 @@ def create_app(data_dir: Optional[Path] = None,
         if isinstance(pid, str) and any(p["id"] == pid for p in s.players):
             return pid
         return None
+
+    def unfinalize(s: Store, pid: str) -> None:
+        # Any list edit invalidates a previous "I'm done".
+        s.set_finalized(pid, False)
 
     @app.before_request
     def _require_identity() -> Optional[ResponseReturnValue]:
@@ -98,7 +102,9 @@ def create_app(data_dir: Optional[Path] = None,
             "home.html", player=s.player(pid), games=games, query=q,
             catalog_matches=catalog_matches, rawg_matches=rawg_matches,
             max_list_size=MAX_LIST_SIZE, has_coop=has_coop, played=played,
-            search_error=session.pop("search_error", None))
+            finalized=s.is_finalized(pid),
+            search_error=session.pop("search_error", None),
+            finalize_error=session.pop("finalize_error", None))
 
     @app.route("/list/add", methods=["POST"])
     def list_add() -> ResponseReturnValue:
@@ -114,6 +120,7 @@ def create_app(data_dir: Optional[Path] = None,
             abort(400, f"list already has {MAX_LIST_SIZE} games")
         entries.append({"game_id": game_id, "priority": False})
         s.submissions[pid] = entries
+        unfinalize(s, pid)
         s.save()
         sync(f"{pid}: add {game_id} to list")
         return redirect(url_for("home"))
@@ -126,6 +133,7 @@ def create_app(data_dir: Optional[Path] = None,
         game_id = request.form["game_id"]
         s.submissions[pid] = [e for e in s.submissions.get(pid, [])
                               if e["game_id"] != game_id]
+        unfinalize(s, pid)
         s.save()
         sync(f"{pid}: remove {game_id} from list")
         return redirect(url_for("home"))
@@ -140,8 +148,24 @@ def create_app(data_dir: Optional[Path] = None,
             {"game_id": e["game_id"], "priority": e["game_id"] == game_id}
             for e in s.submissions.get(pid, [])
         ]
+        unfinalize(s, pid)
         s.save()
         sync(f"{pid}: set priority to {game_id}")
+        return redirect(url_for("home"))
+
+    @app.route("/list/finalize", methods=["POST"])
+    def list_finalize() -> ResponseReturnValue:
+        s = store()
+        pid = current_player(s)
+        assert pid is not None
+        try:
+            validate_submission(pid, s.list_games(pid), s.played())
+        except DrawError as e:
+            session["finalize_error"] = str(e)
+            return redirect(url_for("home"))
+        s.set_finalized(pid, True)
+        s.save()
+        sync(f"{pid}: finalized list")
         return redirect(url_for("home"))
 
     @app.route("/games/new")
@@ -175,10 +199,6 @@ def create_app(data_dir: Optional[Path] = None,
                 game = rawg.fetch(slug, now_iso())
             except rawg.RawgError as e:
                 abort(400, str(e))
-            game["is_coop"] = "is_coop" in request.form
-            game["is_indie"] = "is_indie" in request.form
-            hours = request.form.get("hours", "").strip()
-            game["hours_main"] = float(hours) if hours else None
             appid = request.form.get("steam_appid", "").strip()
             if appid:
                 game["steam_appid"] = int(appid)
@@ -195,9 +215,43 @@ def create_app(data_dir: Optional[Path] = None,
                 abort(400, f"list already has {MAX_LIST_SIZE} games")
             entries.append({"game_id": game["id"], "priority": False})
             s.submissions[pid] = entries
+            unfinalize(s, pid)
         s.save()
         sync(f"{pid}: add new game {game['id']}")
         return redirect(url_for("home"))
+
+    @app.route("/players")
+    def players_page() -> ResponseReturnValue:
+        return render_template("players.html")
+
+    @app.route("/api/players")
+    def api_players() -> ResponseReturnValue:
+        s = store()
+        played = s.played()
+        data = []
+        for p in s.players:
+            if not p["active"]:
+                continue
+            entries = s.submissions.get(p["id"], [])
+            games = []
+            for e in entries:
+                g = s.game(e["game_id"])
+                games.append({
+                    "title": g["title"], "is_coop": g["is_coop"],
+                    "is_indie": g["is_indie"], "priority": e["priority"],
+                    "played": g["id"] in played,
+                })
+            data.append({
+                "id": p["id"], "name": p["name"],
+                "finalized": s.is_finalized(p["id"]), "games": games,
+            })
+        return jsonify(data)
+
+    @app.route("/games")
+    def games_page() -> ResponseReturnValue:
+        s = store()
+        return render_template("games.html", games=s.games,
+                               played=s.played())
 
     @app.errorhandler(StoreError)
     @app.errorhandler(DrawError)

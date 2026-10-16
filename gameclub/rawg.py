@@ -46,7 +46,8 @@ def _get(path: str, params: Optional[dict[str, str]] = None) -> Any:
 def search(query: str) -> list[dict[str, Any]]:
     data = _get("/games", {"search": query, "page_size": "8"})
     return [{"id": r["id"], "slug": r["slug"], "name": r["name"],
-             "released": r.get("released")}
+             "released": r.get("released"),
+             "background_image": r.get("background_image")}
             for r in data.get("results", [])]
 
 

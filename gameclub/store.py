@@ -111,6 +111,9 @@ class Store:
         self.players: list[PlayerRec] = club.get("players", [])
         self.rotations_raw: list[dict[str, Any]] = club.get("rotations", [])
         self.price_country: str = club.get("price_country", "nl")
+        # Players who flagged their list "done" for the next round. Cleared
+        # when that round is drawn (gameclub.rounds.run_draw).
+        self.finalized: list[str] = club.get("finalized", [])
         self.games: list[GameRec] = _read(data_dir / "games.json", [])
         self.submissions: dict[str, list[SubmissionEntry]] = _read(
             data_dir / "submissions.json", {})
@@ -124,6 +127,7 @@ class Store:
             "players": self.players,
             "rotations": self.rotations_raw,
             "price_country": self.price_country,
+            "finalized": self.finalized,
         })
         _write(self.dir / "games.json", self.games)
         _write(self.dir / "submissions.json", self.submissions)
@@ -140,6 +144,17 @@ class Store:
 
     def active_ids(self) -> list[str]:
         return [p["id"] for p in self.players if p["active"]]
+
+    def is_finalized(self, player_id: str) -> bool:
+        return player_id in self.finalized
+
+    def set_finalized(self, player_id: str, value: bool) -> None:
+        self.finalized = [p for p in self.finalized if p != player_id]
+        if value:
+            self.finalized.append(player_id)
+
+    def clear_finalized(self) -> None:
+        self.finalized = []
 
     def add_player(self, player_id: str, name: str,
                    platforms: list[str],

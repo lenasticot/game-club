@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Everyone's lists - Game Club{% endblock %}
+{% block content %}
+  <h1>Everyone's lists</h1>
+  <p class="hint">Updates automatically every few seconds.</p>
+  <div id="players"></div>
+
+  <script>
+    function render(players) {
+      const root = document.getElementById("players");
+      root.innerHTML = players.map(p => `
+        <section class="player-section">
+          <h2>${p.name}
+            ${p.finalized ? '<span class="tag success-tag">done</span>' : ''}
+          </h2>
+          <ul class="results">
+            ${p.games.length ? p.games.map(g => `
+              <li>
+                <span class="result-info">
+                  ${g.title}
+                  ${g.played ? '<span class="tag">played</span>' : ''}
+                  ${g.is_coop ? '<span class="tag">co-op</span>' : ''}
+                  ${g.is_indie ? '<span class="tag">indie</span>' : ''}
+                  ${g.priority ? '<span class="tag">priority</span>' : ''}
+                </span>
+              </li>`).join("") : '<li class="hint">No games yet.</li>'}
+          </ul>
+        </section>
+      `).join("");
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch("{{ url_for('api_players') }}");
+        if (res.ok) render(await res.json());
+      } catch (e) { /* offline blip, keep last render, retry next tick */ }
+    }
+    refresh();
+    setInterval(refresh, 6000);
+  </script>
+{% endblock %}

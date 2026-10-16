@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}All games - Game Club{% endblock %}
+{% block content %}
+  <h1>All games</h1>
+  <ul class="results">
+    {% for g in games %}
+      <li>
+        <span class="result-info">
+          {% if g.cover_url %}<img src="{{ g.cover_url }}" alt="">{% endif %}
+          {{ g.title }}
+          {% if g.id in played %}<span class="tag">played</span>{% endif %}
+          {% if g.is_coop %}<span class="tag">co-op</span>{% endif %}
+          {% if g.is_indie %}<span class="tag">indie</span>{% endif %}
+          {% if g.hours_main or g.rawg_playtime %}
+            <span class="tag">~{{ g.hours_main or g.rawg_playtime }}h</span>
+          {% endif %}
+          {% if g.price %}<span class="tag">{{ g.price.formatted }}</span>{% endif %}
+        </span>
+      </li>
+    {% else %}
+      <li class="hint">No games added yet.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}
