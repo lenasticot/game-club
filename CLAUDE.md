@@ -96,10 +96,17 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
   fresh clone at each cold start is always current. `git_sync.py` needed no
   change (`repo_dir` is already a parameter) — this is a boot-script/deploy
   concern, not app code.
-- **Static display site** stack: Astro (mostly-static game cards, round
-  pages) with a Svelte island for the reveal animation — ships ~zero JS for
-  the static 95%, Svelte's built-in transitions handle the animated reveal.
-  Not started yet.
+- **Reveal lives in the Flask entry site, not a separate static site**
+  (reverses the earlier Astro+Svelte/GitHub Pages plan, 2026-10-16). Players
+  already add games and finalize on this site with their own identity/
+  session; "wait for the draw, come back" fits naturally on the same site
+  instead of a second one to visit. `/round` shows: no round yet → a
+  waiting message; a drawn round → the reveal animation. One thing to
+  build and host, not two.
+- **Reveal animation design**: a horizontal reel of game cover jaquettes
+  per slot (co-op/indie/free), built from that round's player list
+  snapshot, spinning/scrolling and decelerating slot-machine style to land
+  on the drawn game. Plain CSS transition + JS-computed offset, no library.
 
 ## Planned stack (MVP)
 
@@ -111,9 +118,9 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
 - Game metadata from RAWG (simpler key) or IGDB (needs Twitch OAuth, server-side
   only). Fetch once when a game is added and cache it; never call APIs at draw
   time or from the site.
-- Static site on GitHub Pages (needs a public repo on a free account): a card
-  per game (cover, genre, length, proposer), a reveal animation that plays an
-  already-computed draw, a page per round with ratings.
+- Reveal + round pages live in the same Flask entry site (`/round`), not a
+  separate static site (see Decided, 2026-10-16) — a card per game, a
+  reveal animation over an already-computed draw, ratings per round.
 - Discussion: a Discord thread per round, linked from the site. Don't build a
   discussion page.
 

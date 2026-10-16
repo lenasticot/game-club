@@ -2,11 +2,14 @@
 
 No passwords: picking a name sets a signed session cookie, like a
 Tricount group link. Every write loads a fresh Store, changes it,
-saves, and commits+pushes via git_sync so data/ (the source of truth)
+saves, and commits+pushes via git_sync (in a background thread, so the
+request doesn't wait on the network) so data/ (the source of truth)
 stays in sync with the live site.
 """
 
 import os
+import random
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -17,8 +20,11 @@ from flask.typing import ResponseReturnValue
 
 from gameclub import prices, rawg
 from gameclub.draw import MAX_LIST_SIZE, DrawError, validate_submission
+from gameclub.rounds import SLOT_LABELS
 from gameclub.store import GameRec, Store, StoreError
 from web import git_sync
+
+REEL_FILLER_CAP = 10
 
 
 def now_iso() -> str:
@@ -33,13 +39,26 @@ def create_app(data_dir: Optional[Path] = None,
     app.config["REPO_DIR"] = repo_dir or app.config["DATA_DIR"].parent
     app.config["GIT_PUSH"] = os.environ.get("GAMECLUB_GIT_PUSH", "1") != "0"
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32))
+    # Threads doing the actual commit+push, so tests can join() them instead
+    # of racing a background thread.
+    pending_syncs: list[threading.Thread] = []
+    app.config["PENDING_SYNCS"] = pending_syncs
 
     def store() -> Store:
         return Store(app.config["DATA_DIR"])
 
     def sync(message: str) -> None:
-        git_sync.commit_and_push(
-            app.config["REPO_DIR"], message, push=app.config["GIT_PUSH"])
+        # git push is a slow network round-trip; don't make the player
+        # wait on it. The commit itself (inside commit_and_push) is fast
+        # and local, so data isn't lost even if the thread is slow - only
+        # a crash before it runs would lose this one push.
+        t = threading.Thread(
+            target=git_sync.commit_and_push,
+            args=(app.config["REPO_DIR"], message),
+            kwargs={"push": app.config["GIT_PUSH"]},
+            daemon=True)
+        t.start()
+        pending_syncs.append(t)
 
     def current_player(s: Store) -> Optional[str]:
         pid = session.get("player_id")
@@ -252,6 +271,28 @@ def create_app(data_dir: Optional[Path] = None,
         s = store()
         return render_template("games.html", games=s.games,
                                played=s.played())
+
+    @app.route("/round")
+    def round_page() -> ResponseReturnValue:
+        s = store()
+        if not s.rounds:
+            return render_template("round.html", slots=None)
+        rec = s.rounds[-1]
+        sitting = [s.player(pid)["name"] for pid in rec["sitting"]]
+        slots = []
+        for pick in rec["picks"]:
+            other_ids = [gid for gid in rec["lists"].get(pick["player"], [])
+                         if s.has_game(gid) and gid != pick["game_id"]]
+            filler = [s.game(gid) for gid in other_ids]
+            random.shuffle(filler)
+            reel = (filler * 3)[:REEL_FILLER_CAP] + [s.game(pick["game_id"])]
+            slots.append({
+                "slot": pick["slot"], "label": SLOT_LABELS[pick["slot"]],
+                "player": s.player(pick["player"])["name"],
+                "game": s.game(pick["game_id"]), "reel": reel,
+            })
+        return render_template("round.html", round=rec, sitting=sitting,
+                               slots=slots)
 
     @app.errorhandler(StoreError)
     @app.errorhandler(DrawError)

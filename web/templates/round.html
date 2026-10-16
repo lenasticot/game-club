@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Round reveal - Game Club{% endblock %}
+{% block content %}
+  <h1>Round reveal</h1>
+  {% if not slots %}
+    <p class="hint">No round drawn yet. Check back after the admin runs
+      the draw.</p>
+  {% else %}
+    <p class="hint">
+      Round {{ round.number }}, drawn {{ round.drawn_at[:10] }}.
+      {% if sitting %}Sitting out: {{ sitting|join(', ') }}.{% endif %}
+    </p>
+
+    {% for s in slots %}
+      <section class="reveal-slot">
+        <h2>{{ s.label }} <span class="hint">({{ s.player }})</span></h2>
+        <div class="reel-track">
+          <div class="reel" id="reel-{{ loop.index }}">
+            {% for g in s.reel %}
+              <div class="reel-item">
+                {% if g.cover_url %}
+                  <img src="{{ g.cover_url }}" alt="">
+                {% else %}
+                  <div class="reel-placeholder">{{ g.title }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <p class="reveal-title" id="title-{{ loop.index }}" hidden>
+          {{ s.game.title }}
+        </p>
+      </section>
+    {% endfor %}
+
+    <script>
+      const ITEM_WIDTH = 160;
+
+      function spin(reel, titleEl, delay) {
+        setTimeout(() => {
+          const target = reel.children.length - 1;  // the pick is last
+          const offset = Math.max(0, (target - 1) * ITEM_WIDTH);
+          reel.style.transition = "none";
+          reel.style.transform = "translateX(0px)";
+          requestAnimationFrame(() => {
+            reel.style.transition =
+              "transform 3s cubic-bezier(.12,.74,.14,1)";
+            reel.style.transform = `translateX(-${offset}px)`;
+          });
+          setTimeout(() => { titleEl.hidden = false; }, 3100);
+        }, delay);
+      }
+
+      {% for s in slots %}
+        spin(document.getElementById("reel-{{ loop.index }}"),
+            document.getElementById("title-{{ loop.index }}"),
+            {{ loop.index0 * 3300 }});
+      {% endfor %}
+    </script>
+  {% endif %}
+{% endblock %}
