@@ -127,5 +127,34 @@
       "fetched_at": "2026-10-16T20:05:01+00:00"
     },
     "metadata_fetched_at": "2026-10-16T20:05:00+00:00"
+  },
+  {
+    "id": "call-of-duty-vanguard",
+    "title": "Call of Duty: Vanguard",
+    "rawg_id": 647552,
+    "cover_url": "https://media.rawg.io/media/games/fa8/fa870a46d5e3e8cb1fa0a5e4f798ff2a.jpg",
+    "genres": [
+      "Shooter"
+    ],
+    "is_indie": false,
+    "is_coop": true,
+    "platforms": [
+      "PC",
+      "Xbox Series S/X",
+      "Xbox One",
+      "PlayStation 5",
+      "PlayStation 4"
+    ],
+    "hours_main": null,
+    "rawg_playtime": 9,
+    "steam_appid": 1985820,
+    "price": {
+      "amount": 59.99,
+      "currency": "EUR",
+      "formatted": "59,99€",
+      "is_free": false,
+      "fetched_at": "2026-10-16T20:05:32+00:00"
+    },
+    "metadata_fetched_at": "2026-10-16T20:05:31+00:00"
   }
 ]

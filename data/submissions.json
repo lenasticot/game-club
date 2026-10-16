@@ -21,6 +21,10 @@
     {
       "game_id": "truck-simulator-2",
       "priority": false
+    },
+    {
+      "game_id": "call-of-duty-vanguard",
+      "priority": false
     }
   ]
 }
