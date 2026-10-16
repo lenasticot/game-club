@@ -11,6 +11,10 @@
     {
       "game_id": "spyro-the-dragon-2007",
       "priority": false
+    },
+    {
+      "game_id": "tales-of-symphonia-2003",
+      "priority": false
     }
   ]
 }

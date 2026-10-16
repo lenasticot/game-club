@@ -80,5 +80,26 @@
     "steam_appid": null,
     "price": null,
     "metadata_fetched_at": "2026-10-16T19:34:36+00:00"
+  },
+  {
+    "id": "tales-of-symphonia-2003",
+    "title": "Tales of Symphonia (2003)",
+    "rawg_id": 56237,
+    "cover_url": "https://media.rawg.io/media/games/b8f/b8f0dfc8230e468fe2c5644ccbec9c5a.jpg",
+    "genres": [
+      "Action",
+      "RPG"
+    ],
+    "is_indie": false,
+    "is_coop": true,
+    "platforms": [
+      "GameCube",
+      "PlayStation 2"
+    ],
+    "hours_main": null,
+    "rawg_playtime": null,
+    "steam_appid": null,
+    "price": null,
+    "metadata_fetched_at": "2026-10-16T19:38:19+00:00"
   }
 ]
