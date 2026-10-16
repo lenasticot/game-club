@@ -124,6 +124,32 @@ class TestDraw(unittest.TestCase):
         with self.assertRaises(DrawError):
             draw_round(1, "s", ROTATIONS, subs)
 
+    def test_two_long_games_are_never_picked_together(self) -> None:
+        # Round 3 sits out chloe: alice and bob both pick.
+        subs = dict(SUBMISSIONS)
+        subs["alice"] = [Game("alice-coop", "", is_coop=True, hours=40),
+                         Game("alice-indie", "", is_indie=True),
+                         Game("alice-other", "")]
+        subs["bob"] = [Game("bob-coop", "", is_coop=True),
+                       Game("bob-indie", "", is_indie=True),
+                       Game("bob-other", "", hours=50)]
+        for seed in range(200):
+            picks = draw_round(3, str(seed), ROTATIONS, subs)
+            self.assertLessEqual(sum(p.game.is_long for p in picks), 1)
+
+    def test_priority_game_is_picked_more_often_but_not_always(self) -> None:
+        subs = dict(SUBMISSIONS)
+        a = Game("dan-a", "A", is_coop=True, priority=True)
+        b = Game("dan-b", "B", is_coop=True)
+        subs["dan"] = [a, b, Game("dan-indie", "", is_indie=True)]
+        picked = {"dan-a": 0, "dan-b": 0}
+        for seed in range(400):
+            for pick in draw_round(1, str(seed), ROTATIONS, subs):
+                if pick.game.id in picked:
+                    picked[pick.game.id] += 1
+        self.assertGreater(picked["dan-a"], picked["dan-b"])
+        self.assertGreater(picked["dan-b"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

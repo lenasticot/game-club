@@ -1,15 +1,19 @@
 """Load and save the club data kept as JSON files in data/.
 
-club.json         players, sit-out rotations, country used for prices
-games.json        game metadata, fetched once and cached
-submissions.json  each player's current list of game ids
-rounds.json       drawn rounds, with the lists they were drawn from
+club.json             players, sit-out rotations, country used for prices
+games.json            game metadata, fetched once and cached
+submissions.json      each player's current list: [{game_id, priority}]
+rounds.json           drawn rounds, with the lists they were drawn from
+player_secrets.json   discord_id/steam_id per player, gitignored (not
+                      committed: players.name is a pseudonym, these aren't)
 """
 
 import json
 import os
 from pathlib import Path
 from typing import Any, Optional, TypedDict
+
+from dataclasses import replace
 
 from gameclub.draw import Game, Rotation
 
@@ -18,9 +22,17 @@ class PlayerRec(TypedDict):
     id: str
     name: str
     platforms: list[str]
+    active: bool
+
+
+class SecretRec(TypedDict):
     discord_id: Optional[str]
     steam_id: Optional[str]
-    active: bool
+
+
+class SubmissionEntry(TypedDict):
+    game_id: str
+    priority: bool
 
 
 class PriceRec(TypedDict):
@@ -100,9 +112,11 @@ class Store:
         self.rotations_raw: list[dict[str, Any]] = club.get("rotations", [])
         self.price_country: str = club.get("price_country", "nl")
         self.games: list[GameRec] = _read(data_dir / "games.json", [])
-        self.submissions: dict[str, list[str]] = _read(
+        self.submissions: dict[str, list[SubmissionEntry]] = _read(
             data_dir / "submissions.json", {})
         self.rounds: list[RoundRec] = _read(data_dir / "rounds.json", [])
+        self.secrets: dict[str, SecretRec] = _read(
+            data_dir / "player_secrets.json", {})
 
     def save(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -114,6 +128,7 @@ class Store:
         _write(self.dir / "games.json", self.games)
         _write(self.dir / "submissions.json", self.submissions)
         _write(self.dir / "rounds.json", self.rounds)
+        _write(self.dir / "player_secrets.json", self.secrets)
 
     # Players
 
@@ -127,12 +142,15 @@ class Store:
         return [p["id"] for p in self.players if p["active"]]
 
     def add_player(self, player_id: str, name: str,
-                   platforms: list[str]) -> None:
+                   platforms: list[str],
+                   discord_id: Optional[str] = None,
+                   steam_id: Optional[str] = None) -> None:
         if any(p["id"] == player_id for p in self.players):
             raise StoreError(f"player {player_id} already exists")
         self.players.append(PlayerRec(
-            id=player_id, name=name, platforms=platforms,
-            discord_id=None, steam_id=None, active=True))
+            id=player_id, name=name, platforms=platforms, active=True))
+        self.secrets[player_id] = SecretRec(
+            discord_id=discord_id, steam_id=steam_id)
         if self.rotations_raw:
             order = list(self._current_order()) + [player_id]
             self._start_rotation(order)
@@ -184,11 +202,13 @@ class Store:
 
     def draw_game(self, game_id: str) -> Game:
         g = self.game(game_id)
+        hours = g["hours_main"] or g["rawg_playtime"]
         return Game(g["id"], g["title"], is_indie=g["is_indie"],
-                    is_coop=g["is_coop"])
+                    is_coop=g["is_coop"], hours=hours)
 
     def list_games(self, player_id: str) -> list[Game]:
-        return [self.draw_game(i) for i in self.submissions.get(player_id, [])]
+        return [replace(self.draw_game(e["game_id"]), priority=e["priority"])
+                for e in self.submissions.get(player_id, [])]
 
     # Rounds
 

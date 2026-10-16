@@ -6,7 +6,7 @@ of live responses (RAWG needs a key that this repo doesn't have yet).
 
 import unittest
 
-from gameclub.prices import parse_price
+from gameclub.prices import parse_price, parse_search
 from gameclub.rawg import parse_game
 
 NOW = "2026-10-13T12:00:00+00:00"
@@ -62,6 +62,22 @@ class TestSteamPrice(unittest.TestCase):
         price = parse_price(570, basic, NOW)
         assert price is not None
         self.assertTrue(price["is_free"])
+
+
+class TestSteamSearch(unittest.TestCase):
+    def test_parse_search_keeps_only_apps(self) -> None:
+        # Live sample from storesearch?term=portal+2, trimmed (checked
+        # live 2026-10-16).
+        payload = {"total": 10, "items": [
+            {"type": "app", "name": "Portal 2", "id": 620},
+            {"type": "app", "name": "Portal 2 Soundtrack", "id": 323180},
+            {"type": "bundle", "name": "Portal Bundle", "id": 999},
+        ]}
+        matches = parse_search(payload)
+        self.assertEqual(matches, [
+            {"appid": 620, "name": "Portal 2"},
+            {"appid": 323180, "name": "Portal 2 Soundtrack"},
+        ])
 
 
 if __name__ == "__main__":

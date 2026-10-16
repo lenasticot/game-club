@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ player.name }}'s list - Game Club{% endblock %}
+{% block content %}
+  <h1>{{ player.name }}'s list</h1>
+  {% if not has_coop %}
+    <p class="warning">Your list needs at least one unplayed co-op game
+      before a round can draw from it.</p>
+  {% endif %}
+
+  <table class="list">
+    <tbody>
+      {% for entry, game in games %}
+        <tr>
+          <td>
+            {{ game.title }}
+            {% if game.id in played %}<span class="tag">played</span>{% endif %}
+            {% if game.is_coop %}<span class="tag">co-op</span>{% endif %}
+            {% if game.is_indie %}<span class="tag">indie</span>{% endif %}
+            {% if game.hours_main or game.rawg_playtime %}
+              <span class="tag">~{{ game.hours_main or game.rawg_playtime }}h</span>
+            {% endif %}
+            {% if game.price %}<span class="tag">{{ game.price.formatted }}</span>{% endif %}
+          </td>
+          <td>
+            <form action="{{ url_for('list_priority') }}" method="post" class="inline">
+              <input type="hidden" name="game_id" value="{{ game.id }}">
+              <button type="submit" class="{{ 'active' if entry.priority else '' }}">
+                {{ "priority" if entry.priority else "make priority" }}
+              </button>
+            </form>
+            <form action="{{ url_for('list_remove') }}" method="post" class="inline">
+              <input type="hidden" name="game_id" value="{{ game.id }}">
+              <button type="submit" class="link">remove</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td>No games yet. Search below to add some.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">{{ games|length }} / {{ max_list_size }} games</p>
+
+  <h2>Add a game</h2>
+  <form action="{{ url_for('home') }}" method="get">
+    <input type="text" name="q" value="{{ query }}" placeholder="Search for a game" autofocus>
+    <button type="submit">Search</button>
+  </form>
+
+  {% if search_error %}<p class="warning">{{ search_error }}</p>{% endif %}
+
+  {% if query %}
+    {% if catalog_matches %}
+      <h3>Already in the club</h3>
+      <ul class="results">
+        {% for g in catalog_matches %}
+          <li>
+            {{ g.title }}
+            <form action="{{ url_for('list_add') }}" method="post" class="inline">
+              <input type="hidden" name="game_id" value="{{ g.id }}">
+              <button type="submit">Add to my list</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    <h3>Find online</h3>
+    {% if rawg_matches %}
+      <ul class="results">
+        {% for r in rawg_matches %}
+          <li>
+            {{ r.name }} {% if r.released %}({{ r.released[:4] }}){% endif %}
+            <a href="{{ url_for('games_new', slug=r.slug) }}">Select</a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="hint">No online results.</p>
+    {% endif %}
+  {% endif %}
+{% endblock %}

@@ -8,11 +8,17 @@ no price unless entered by hand.
 import json
 import urllib.parse
 import urllib.request
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 
 from gameclub.store import PriceRec
 
 APPDETAILS = "https://store.steampowered.com/api/appdetails"
+STORESEARCH = "https://store.steampowered.com/api/storesearch/"
+
+
+class SteamMatch(TypedDict):
+    appid: int
+    name: str
 
 
 def _get(appid: int, country: str, filters: str) -> Any:
@@ -57,3 +63,23 @@ def steam_price(appid: int, country: str, now: str) -> Optional[PriceRec]:
     if price is None:
         price = parse_price(appid, _get(appid, country, "basic"), now)
     return price
+
+
+def parse_search(payload: Any) -> list[SteamMatch]:
+    """Candidate Steam store matches for a title.
+
+    For the entry site to offer as a confirm-the-match step, not to
+    auto-pick: title search is fuzzy and can return unrelated apps
+    (soundtracks, DLC, community editions).
+    """
+    return [SteamMatch(appid=item["id"], name=item["name"])
+            for item in payload.get("items", []) if item.get("type") == "app"]
+
+
+def steam_search(title: str, country: str) -> list[SteamMatch]:
+    query = urllib.parse.urlencode(
+        {"term": title, "l": "english", "cc": country})
+    req = urllib.request.Request(f"{STORESEARCH}?{query}",
+                                 headers={"User-Agent": "game-club"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return parse_search(json.load(resp))

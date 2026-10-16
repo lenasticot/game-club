@@ -12,6 +12,8 @@ from typing import Optional
 
 SLOTS_PER_ROUND = 3
 MAX_LIST_SIZE = 10
+LONG_GAME_HOURS = 30
+PRIORITY_WEIGHT = 3
 
 
 class Slot(Enum):
@@ -27,6 +29,10 @@ class Game:
     is_indie: bool = False
     # Any multiplayer game, 2 players or more.
     is_coop: bool = False
+    hours: Optional[float] = None
+    # Set per submission: this player flagged this game for extra draw
+    # weight, not a guarantee.
+    priority: bool = False
 
     def fits(self, slot: Slot) -> bool:
         if slot is Slot.COOP:
@@ -34,6 +40,10 @@ class Game:
         if slot is Slot.INDIE:
             return self.is_indie
         return True
+
+    @property
+    def is_long(self) -> bool:
+        return self.hours is not None and self.hours > LONG_GAME_HOURS
 
 
 @dataclass(frozen=True)
@@ -117,19 +127,39 @@ def _fill(
     rng: random.Random,
     assignment: list[tuple[Slot, str]],
     lists: dict[str, list[Game]],
+    id_to_game: dict[str, Game],
     taken: set[str],
+    chosen: set[str],
 ) -> Optional[list[Pick]]:
-    """Pick a game for each (slot, player), backtracking on collisions."""
+    """Pick a game for each (slot, player), backtracking on collisions.
+
+    Skips a second >30h game once one is already chosen this round.
+    A priority-flagged game is repeated in the shuffle pool, giving it
+    extra (not guaranteed) odds of being the one picked.
+    """
     if not assignment:
         return []
     (slot, player), rest = assignment[0], assignment[1:]
+    has_long = any(id_to_game[i].is_long for i in chosen)
     candidates = [g for g in lists[player]
-                  if g.fits(slot) and g.id not in taken]
-    rng.shuffle(candidates)
-    for game in candidates:
+                  if g.fits(slot) and g.id not in taken
+                  and not (has_long and g.is_long)]
+    weighted = []
+    for g in candidates:
+        weighted.append(g)
+        if g.priority:
+            weighted.extend([g] * (PRIORITY_WEIGHT - 1))
+    rng.shuffle(weighted)
+    seen: set[str] = set()
+    for game in weighted:
+        if game.id in seen:
+            continue
+        seen.add(game.id)
         taken.add(game.id)
-        tail = _fill(rng, rest, lists, taken)
+        chosen.add(game.id)
+        tail = _fill(rng, rest, lists, id_to_game, taken, chosen)
         taken.discard(game.id)
+        chosen.discard(game.id)
         if tail is not None:
             return [Pick(slot=slot, player=player, game=game)] + tail
     return None
@@ -167,6 +197,7 @@ def draw_round(
 
     rng = random.Random(f"{seed}:{round_number}")
     lists = {p: sorted(submissions[p], key=lambda g: g.id) for p in pickers}
+    id_to_game = {g.id: g for games in lists.values() for g in games}
 
     slot_options = [
         [Slot.COOP, Slot.INDIE, Slot.FREE],
@@ -179,7 +210,8 @@ def draw_round(
         for players in player_orders:
             # Most constrained slots first: co-op, then indie, then free.
             assignment = list(zip(slots, players))
-            picks = _fill(rng, assignment, lists, set(played))
+            picks = _fill(rng, assignment, lists, id_to_game,
+                          set(played), set())
             if picks is not None:
                 return picks
     raise DrawError(

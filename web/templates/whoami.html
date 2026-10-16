@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Who are you? - Game Club{% endblock %}
+{% block content %}
+  <h1>Who are you?</h1>
+  <div class="player-grid">
+    {% for p in players %}
+      <form action="{{ url_for('whoami') }}" method="post">
+        <input type="hidden" name="player_id" value="{{ p.id }}">
+        <button type="submit" class="player-card">{{ p.name }}</button>
+      </form>
+    {% endfor %}
+  </div>
+  {% if not players %}
+    <p>No active players yet. Ask the admin to add you.</p>
+  {% endif %}
+{% endblock %}

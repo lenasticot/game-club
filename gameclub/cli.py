@@ -24,7 +24,8 @@ def now_iso() -> str:
 # Players
 
 def cmd_player_add(store: Store, args: argparse.Namespace) -> None:
-    store.add_player(args.id, args.name, args.platform or [])
+    store.add_player(args.id, args.name, args.platform or [],
+                     args.discord_id, args.steam_id)
     print(f"added {args.id}")
 
 
@@ -119,7 +120,12 @@ def cmd_list_set(store: Store, args: argparse.Namespace) -> None:
     store.player(args.player)
     games = [store.draw_game(i) for i in args.games]
     validate_submission(args.player, games, store.played())
-    store.submissions[args.player] = list(args.games)
+    if args.priority and args.priority not in args.games:
+        raise StoreError(f"--priority {args.priority} is not in the list")
+    store.submissions[args.player] = [
+        {"game_id": gid, "priority": gid == args.priority}
+        for gid in args.games
+    ]
     print(f"{args.player}: {len(games)} games")
 
 
@@ -128,9 +134,11 @@ def cmd_list_show(store: Store, args: argparse.Namespace) -> None:
     players = [args.player] if args.player else store.active_ids()
     for pid in players:
         print(f"{store.player(pid)['name']}:")
-        for game_id in store.submissions.get(pid, []):
-            mark = " (played)" if game_id in played else ""
-            print("  " + _describe(store.game(game_id)) + mark)
+        for entry in store.submissions.get(pid, []):
+            mark = " (played)" if entry["game_id"] in played else ""
+            star = " *priority" if entry["priority"] else ""
+            print("  " + _describe(store.game(entry["game_id"]))
+                  + mark + star)
 
 
 # Rounds
@@ -215,8 +223,10 @@ def build_parser() -> argparse.ArgumentParser:
     player = sub.add_parser("player").add_subparsers(required=True)
     p = player.add_parser("add")
     p.add_argument("id")
-    p.add_argument("name")
+    p.add_argument("name", help="pseudonym/first name, not stored privately")
     p.add_argument("--platform", action="append")
+    p.add_argument("--discord-id", help="stored in player_secrets.json only")
+    p.add_argument("--steam-id", help="stored in player_secrets.json only")
     p.set_defaults(func=cmd_player_add, writes=True)
     p = player.add_parser("remove", help="mark inactive")
     p.add_argument("id")
@@ -249,6 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = lst.add_parser("set", help="replace a player's list")
     p.add_argument("player")
     p.add_argument("games", nargs="+")
+    p.add_argument("--priority", help="game id to flag for extra draw odds")
     p.set_defaults(func=cmd_list_set, writes=True)
     p = lst.add_parser("show")
     p.add_argument("player", nargs="?")

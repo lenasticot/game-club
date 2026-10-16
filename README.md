@@ -36,6 +36,46 @@ python3 -m gameclub round close 1                # after the meeting
 Set `DISCORD_WEBHOOK_URL` to post draws to Discord. Commit `data/` after
 each change.
 
+## Entry site
+
+A small Flask app lets players pick their name (no password, like a
+Tricount group link — add players via the CLI first), edit their own list,
+and add games (search the catalog, else RAWG, confirm flags/hours/Steam
+match). Every write commits+pushes `data/` itself.
+
+```
+pip install -r requirements-web.txt
+FLASK_SECRET_KEY=<random> python3 -m web.app   # dev server, localhost:5000
+```
+
+Env vars: `GAMECLUB_DATA` (default `data`), `GAMECLUB_GIT_PUSH=0` to disable
+the push (commits still happen), `FLASK_SECRET_KEY` (required to keep
+sessions valid across restarts).
+
+### Deploying (Render, free tier)
+
+Render's free web services have no persistent disk (wiped on every restart
+or spin-down after 15min idle), so `render-start.sh` re-clones `data/` and
+its git history fresh on every boot over HTTPS with a token, instead of
+relying on whatever Render itself checked out to build the app. Every
+write already commits+pushes before responding, so GitHub stays the real
+source of truth and a fresh clone is always current. One-time setup:
+
+1. Push this repo to GitHub (already done, `main`).
+2. On [render.com](https://render.com): New → Blueprint, point it at this
+   repo. It reads `render.yaml` and creates the web service.
+3. In the Render dashboard, set these env vars (they stay secret, never go
+   in the repo):
+   - `GITHUB_TOKEN` — a GitHub **fine-grained personal access token**,
+     scoped to only this repo, with Contents: Read and write permission.
+   - `FLASK_SECRET_KEY` — any random string (e.g. `openssl rand -hex 32`).
+   - `RAWG_API_KEY` — your RAWG key, for the "find online" game search.
+4. Deploy. First load after idle takes about a minute (cold start +
+   re-clone); fine for occasional use by a few friends.
+
+I can't create the Render account, GitHub token, or set secrets for you —
+those need your own logins.
+
 ## Layout
 
 ```
@@ -43,8 +83,10 @@ gameclub/draw.py     draw logic (pure functions, no I/O)
 gameclub/store.py    JSON data files
 gameclub/rounds.py   running and announcing a round
 gameclub/rawg.py     game metadata (RAWG)
-gameclub/prices.py   prices (Steam store)
+gameclub/prices.py   prices + search (Steam store)
 gameclub/cli.py      command line
+web/app.py           entry site (Flask)
+web/git_sync.py      commit+push data/ after a web write
 tests/               unit tests
 data/                club data as JSON
 ```
@@ -53,6 +95,9 @@ data/                club data as JSON
 
 ```
 python3 -m unittest -v
-python3 -m mypy --strict gameclub tests
-python3 -m flake8 gameclub tests
+python3 -m mypy --strict gameclub web tests
+python3 -m flake8 gameclub web tests
 ```
+
+`web` needs Flask (`pip install -r requirements-web.txt`) for the tests and
+type checks to pass.

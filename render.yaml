@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: gameclub-entry-site
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: bash render-start.sh
+    envVars:
+      - key: FLASK_SECRET_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: RAWG_API_KEY
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

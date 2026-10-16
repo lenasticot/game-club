@@ -4,3 +4,4 @@ __pycache__/
 .mypy_cache/
 *.pyc
 .env
+data/player_secrets.json

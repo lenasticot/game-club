@@ -37,14 +37,56 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
   announced again.
 - Games already played by the club are never drawn again; the same game can't be
   picked twice in a round.
+- **Max length rule**: no two long games (>30h, `hours_main`/`rawg_playtime`) in
+  the same round. If a >30h game is already picked, skip other >30h games for
+  remaining slots (don't block the round, just avoid the pair).
+- **Priority star**: a player may flag one game per list as priority, giving it
+  extra weight (not a guarantee) in the random pick from their list. No vote to
+  remove a game from the pool — lists are player-edited anytime, that's enough.
+- **Privacy**: repo stays public (needed for free GitHub Pages). Pseudonymize
+  instead: `players.name` is a nickname/first name, not full name;
+  `discord_id`/`steam_id` move out of the committed JSON into a local
+  gitignored file, loaded at runtime, never pushed.
+- **List entry**: a website, not Forms/CSV, not CLI — friends won't touch git
+  or a terminal. Replaces the Forms→Sheet plan.
+- **Entry-site identity**: Tricount-style, no passwords. Admin adds players
+  via the CLI (unchanged); the site shows a name picker, stores the choice
+  in a signed session cookie. The site URL itself is the "closed" gate.
+- **Entry-site game add**: players add games themselves, not admin-only.
+  Flow: search the local catalog first, else search RAWG → pick a result →
+  confirm/override co-op/indie flags + enter hours by hand → confirm a
+  Steam price match (RAWG's own guess, or a fallback search against Steam's
+  unofficial `storesearch` endpoint, checked live 2026-10-16) or skip price.
+  Flags (`is_coop`/`is_indie`) stay attributes of the shared game, not
+  per-player; whoever last edits a game's flags changes them for everyone
+  (trust-based, fine for a 4-5 friend group).
+- **Entry-site writes**: Flask app wraps `gameclub.store.Store` directly
+  (same code the CLI uses), then `git commit`+`push`es `data/` itself
+  (`web/git_sync.py`), serialized with a lock. Keeps git as the audit trail
+  without the admin manually committing every list change.
+- **Hosting: Render free tier**, checked live 2026-10-16 (other free tiers
+  ruled out: Fly.io has none since 2024, PythonAnywhere free has no SSH and
+  an outbound whitelist, Railway free's $1/mo credit is too thin). Render
+  free has no persistent disk (wiped on every spin-down/restart, sleeps
+  after 15min idle, ~1min cold wake) but unrestricted outbound HTTPS. Design
+  around it: clone `data/`+repo via **HTTPS + a GitHub token** (not SSH)
+  into the ephemeral disk at boot; every write already commits+pushes
+  within the same request, so GitHub is the real persistence layer and a
+  fresh clone at each cold start is always current. `git_sync.py` needed no
+  change (`repo_dir` is already a parameter) — this is a boot-script/deploy
+  concern, not app code.
+- **Static display site** stack: Astro (mostly-static game cards, round
+  pages) with a Svelte island for the reveal animation — ships ~zero JS for
+  the static 95%, Svelte's built-in transitions handle the animated reveal.
+  Not started yet.
 
 ## Planned stack (MVP)
 
 - Python, data as JSON files in the repo (git = history/audit trail).
 - Draw logic as a pure function (`gameclub/draw.py`), reusable by a CLI now and
   maybe a Discord bot later.
-- Lists and ratings entered via Google Forms → Sheet → a script pulls the CSV
-  into JSON, so friends never touch git.
+- Lists and ratings entered via a small website (backend first, UI/design
+  later), writing to the same JSON files so friends never touch git.
 - Game metadata from RAWG (simpler key) or IGDB (needs Twitch OAuth, server-side
   only). Fetch once when a game is added and cache it; never call APIs at draw
   time or from the site.
@@ -57,13 +99,14 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
 ## Data model
 
 ```
-players      id, name, platforms[], discord_id?, steam_id?, active
+players      id, name (pseudonym), platforms[], active
              (+ rotation_order stored in data/club.json)
+             discord_id?/steam_id? live in a local gitignored file, not committed
 games        id (rawg slug), rawg_id, title, cover_url, genres[], is_indie,
              is_coop, platforms[], hours_main, rawg_playtime, steam_appid,
              price {amount, currency, formatted, is_free, fetched_at},
              metadata_fetched_at
-submissions  player_id -> [game_id]          -- current lists (submissions.json)
+submissions  player_id -> [{game_id, priority?}]  -- current lists (submissions.json)
 rounds       number, seed, drawn_at, meeting_date, status (drawn|discussed),
              sitting[], lists (snapshot of lists used), picks[]
 picks        slot (coop|indie|free), game_id, player_id -- inside rounds
@@ -89,17 +132,28 @@ Derive fairness state from history; don't store counters.
 
 ## Status
 
-Done: `gameclub/draw.py` (rotation cycles, backtracking draw, indie fallback),
-`store.py` (JSON I/O), `rawg.py`, `prices.py` (Steam), `rounds.py` (draw,
-announcement, Discord webhook), CLI (`python3 -m gameclub`). 22 tests passing,
-`mypy --strict` and `flake8` clean. Repo is public on GitHub, `main` pushed.
+Done: `gameclub/draw.py` (rotation cycles, backtracking draw, indie fallback,
+max-length rule, priority-star weighting), `store.py` (JSON I/O,
+`player_secrets.json` split out for discord_id/steam_id), `rawg.py`,
+`prices.py` (Steam price + unofficial `storesearch`), `rounds.py` (draw,
+announcement, Discord webhook), CLI (`python3 -m gameclub`, with
+`--priority` on `list set` and `--discord-id`/`--steam-id` on `player add`).
+Entry-site backend: `web/app.py` (Flask: whoami picker, list add/remove/
+priority, game search+add from RAWG with Steam-match confirm) and
+`web/git_sync.py` (commit+push `data/` after each write), with templates in
+`web/templates/`. 33 tests passing (`tests/test_web.py` runs real git
+commits against a throwaway repo, mocks RAWG/Steam), `mypy --strict` and
+`flake8` clean (`gameclub`, `web`, `tests`). Manually smoke-tested the live
+dev server end to end (whoami → add/remove/priority → catalog search → git
+commit each step) in a scratch dir. Repo is public on GitHub, `main` pushed.
 
-Next: get a RAWG key and check `game add` against live data → enter real
-players and lists → round 1 → static site → (maybe) Forms import, Discord bot.
+Next: write the Render boot script (clone via HTTPS+GitHub token, no SSH)
+and `render.yaml`/service config → deploy → get a RAWG key for live
+metadata → enter real players (pseudonyms) and lists through the site →
+round 1 → static display site (Astro + Svelte island, not started).
 
-Open: list size (5 or 10), max length filter, vote to remove a game from the
-pool, Google Form vs CLI entry, privacy of player data in the public repo.
-The Discord webhook post is untested against a real webhook.
+Open: none blocking on the backend/hosting side. The Discord webhook post
+is untested against a real webhook.
 
 ## Working notes
 

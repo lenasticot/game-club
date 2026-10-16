@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Add {{ draft.title }} - Game Club{% endblock %}
+{% block content %}
+  <h1>Add "{{ draft.title }}"</h1>
+  {% if draft.cover_url %}<img src="{{ draft.cover_url }}" class="cover" alt="">{% endif %}
+  <p class="hint">Genres: {{ draft.genres|join(', ') or '-' }}</p>
+
+  <form action="{{ url_for('games_add') }}" method="post">
+    <input type="hidden" name="slug" value="{{ draft.id }}">
+
+    <label><input type="checkbox" name="is_coop" {% if draft.is_coop %}checked{% endif %}>
+      Co-op (any multiplayer, 2+ players)</label>
+    <label><input type="checkbox" name="is_indie" {% if draft.is_indie %}checked{% endif %}>
+      Indie</label>
+
+    <label>Main story length (hours, optional)
+      <input type="number" step="0.5" name="hours"
+            value="{{ draft.rawg_playtime or '' }}"></label>
+
+    {% if draft.steam_appid %}
+      <p>Steam match found automatically (appid {{ draft.steam_appid }}).</p>
+      <input type="hidden" name="steam_appid" value="{{ draft.steam_appid }}">
+    {% elif steam_matches %}
+      <p>Is this one of these on Steam? (for the price)</p>
+      {% for m in steam_matches %}
+        <label><input type="radio" name="steam_appid" value="{{ m.appid }}">
+          {{ m.name }}</label>
+      {% endfor %}
+      <label><input type="radio" name="steam_appid" value="" checked>
+        None of these / not on Steam</label>
+    {% endif %}
+
+    <button type="submit">Add this game</button>
+  </form>
+{% endblock %}

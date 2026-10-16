@@ -60,7 +60,8 @@ def run_draw(store: Store, seed: str, now: str) -> RoundRec:
         status="drawn",
         meeting_date=None,
         sitting=sitters_for_round(rotations, number),
-        lists={p: list(store.submissions[p]) for p in lists},
+        lists={p: [e["game_id"] for e in store.submissions[p]]
+               for p in lists},
         picks=[PickRec(slot=p.slot.value, player=p.player,
                        game_id=p.game.id) for p in picks],
     )
