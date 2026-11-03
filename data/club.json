@@ -33,17 +33,6 @@
       "active": true
     }
   ],
-  "rotations": [
-    {
-      "start_round": 1,
-      "order": [
-        "Vincent",
-        "Leno",
-        "Steph",
-        "Brandon"
-      ]
-    }
-  ],
   "price_country": "nl",
   "finalized": [
     "Leno"
