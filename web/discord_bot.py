@@ -184,9 +184,10 @@ class Bot:
                 message = work()
             except (StoreError, DrawError, rawg.RawgError) as e:
                 message = _msg(f"⚠️ {e}")
-            except Exception:
+            except Exception as e:
                 log.exception("Discord command failed")
-                message = _msg("⚠️ Something broke, check the server logs.")
+                message = _msg(f"⚠️ Something broke ({type(e).__name__}), "
+                               "check the server logs.")
             try:
                 self._edit_original(token, message)
             except OSError:
@@ -319,7 +320,12 @@ class Bot:
                 return _msg("Already on your list.")
             return self._added(token, s, pid, s.game(game_id))
         # New game: show RAWG's card and ask which Steam entry to price.
-        draft = rawg.fetch(game_id, now_iso())
+        try:
+            draft = rawg.fetch(game_id, now_iso())
+        except rawg.RawgNotFound:
+            # Typed text, not a picked suggestion (e.g. suggestions were
+            # too slow to show up): search it instead.
+            return self._did_you_mean(game_id)
         rid = draft["rawg_id"]
         if draft["steam_appid"] is not None:
             components = [{"type": ROW, "components": [
@@ -333,7 +339,7 @@ class Bot:
             try:
                 matches = prices.steam_search(
                     draft["title"], self.club.store().price_country)
-            except OSError:
+            except (OSError, ValueError):
                 matches = []
             options = [{"label": m["name"][:100], "value": str(m["appid"])}
                        for m in matches[:24]]
@@ -346,6 +352,22 @@ class Bot:
             text = "Pick its Steam page (for the price) to add it."
         return _msg(text, embeds=[game_embed(draft)],
                     components=components)
+
+    def _did_you_mean(self, query: str) -> Json:
+        results = rawg.search(query)
+        if not results:
+            return _msg(f"No game found for **{query}**. Try another "
+                        "spelling, or pick from the suggestions while "
+                        "typing.")
+        options = []
+        for r in results[:25]:
+            year = f" ({r['released'][:4]})" if r["released"] else ""
+            options.append({"label": f"{r['name']}{year}"[:100],
+                            "value": r["slug"][:100]})
+        return _msg(f"Which **{query}**?", components=[
+            {"type": ROW, "components": [
+                {"type": SELECT, "custom_id": "pick",
+                 "placeholder": "Pick the game", "options": options}]}])
 
     def _add_new(self, token: str, pid: str, rawg_id: str,
                  appid: Optional[int]) -> Json:
@@ -463,6 +485,10 @@ class Bot:
             # A new reply, not an edit: the button sits on a shared
             # message (/status) that shouldn't change for everyone.
             return self._deferred(payload, lambda: self._ready(token, pid))
+        if cid == "pick":
+            slug = (data.get("values") or [""])[0]
+            return self._deferred(payload, lambda: self._add(
+                token, pid, slug), update=True)
         kind, _, rest = cid.partition("|")
         if kind == "add":
             rid, _, appid = rest.partition("|")

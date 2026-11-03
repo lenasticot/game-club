@@ -130,7 +130,7 @@ def fetch_game(rawg_id_or_slug: str, steam_appid: Optional[int],
     if steam_appid is not None:
         try:
             game["price"] = prices.steam_price(steam_appid, country, now)
-        except OSError:
+        except (OSError, ValueError):  # unofficial endpoint: no price then
             game["price"] = None
     return game
 

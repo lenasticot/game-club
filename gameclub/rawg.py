@@ -11,6 +11,7 @@ response yet.
 import json
 import os
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Optional
@@ -32,6 +33,10 @@ class RawgError(Exception):
     pass
 
 
+class RawgNotFound(RawgError):
+    """No game with that id/slug (e.g. a typed title instead of a slug)."""
+
+
 def _get(path: str, params: Optional[dict[str, str]] = None,
          timeout: float = 15) -> Any:
     key = os.environ.get("RAWG_API_KEY")
@@ -40,8 +45,20 @@ def _get(path: str, params: Optional[dict[str, str]] = None,
     query = urllib.parse.urlencode({**(params or {}), "key": key})
     req = urllib.request.Request(f"{API}{path}?{query}",
                                  headers={"User-Agent": "game-club"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.load(resp)
+    # Turn network/HTTP failures into RawgError, so callers show a clear
+    # message instead of crashing on a raw urllib error.
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise RawgNotFound(f"RAWG has no game {path!r}") from e
+        if e.code in (401, 403):
+            raise RawgError("RAWG rejected the API key (check "
+                            "RAWG_API_KEY)") from e
+        raise RawgError(f"RAWG answered HTTP {e.code}") from e
+    except (OSError, ValueError) as e:  # URLError, timeout, bad JSON
+        raise RawgError(f"could not reach RAWG ({e})") from e
 
 
 def search(query: str, timeout: float = 15) -> list[dict[str, Any]]:

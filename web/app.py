@@ -154,7 +154,7 @@ def create_app(data_dir: Optional[Path] = None,
             try:
                 steam_matches = prices.steam_search(
                     draft["title"], s.price_country)
-            except OSError:
+            except (OSError, ValueError):
                 steam_matches = []
         return render_template("new_game.html", draft=draft,
                                steam_matches=steam_matches)

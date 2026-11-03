@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 from nacl.signing import SigningKey
 
+from gameclub import rawg
 from gameclub.store import GameRec, Store, new_game
 from web import discord_bot as d
 from web.app import create_app
@@ -147,6 +148,39 @@ class TestDiscord(unittest.TestCase):
             self.click(BOB, "add|77|")
         price.assert_not_called()
         self.assertIsNone(self.store().game("new-game")["steam_appid"])
+
+    def test_typed_title_falls_back_to_search_picker(self) -> None:
+        draft: GameRec = new_game("hollow-knight", "Hollow Knight")
+        draft["steam_appid"] = 1
+        results = [{"slug": "hollow-knight", "name": "Hollow Knight",
+                    "released": "2017-02-24"}]
+        with patch("gameclub.rawg.fetch",
+                   side_effect=rawg.RawgNotFound("nope")), \
+                patch("gameclub.rawg.search", return_value=results):
+            self.command(BOB, "add", game="hollow knight")
+        select = self.reply()["components"][0]["components"][0]
+        self.assertEqual(select["custom_id"], "pick")
+        self.assertEqual(select["options"][0],
+                         {"label": "Hollow Knight (2017)",
+                          "value": "hollow-knight"})
+        with patch("gameclub.rawg.fetch", return_value=draft):
+            r = self.click(BOB, "pick", ["hollow-knight"])
+        self.assertEqual(r["type"], d.DEFERRED_UPDATE)
+        button = self.reply()["components"][0]["components"][0]
+        self.assertEqual(button["label"], "Add it")
+
+    def test_rawg_failure_shows_its_message(self) -> None:
+        with patch("gameclub.rawg.fetch",
+                   side_effect=rawg.RawgError("RAWG rejected the API key")):
+            self.command(BOB, "add", game="whatever")
+        self.assertEqual(self.reply()["content"],
+                         "⚠️ RAWG rejected the API key")
+
+    def test_unexpected_error_names_its_type(self) -> None:
+        with patch("gameclub.rawg.fetch", side_effect=KeyError("x")), \
+                self.assertLogs("gameclub.discord", "ERROR"):
+            self.command(BOB, "add", game="whatever")
+        self.assertIn("(KeyError)", self.reply()["content"])
 
     def test_ready_needs_coop_then_announces(self) -> None:
         self.command(ALICE, "ready")
