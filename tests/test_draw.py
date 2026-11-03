@@ -1,154 +1,174 @@
 import unittest
+from collections import Counter
 
 from gameclub.draw import (
     DrawError,
     Game,
-    Rotation,
-    Slot,
-    draw_rotation,
+    PastRound,
     draw_round,
-    sitters_for_round,
+    pick_chances,
+    validate_submission,
+    waits,
 )
 
-ORDER = ("alice", "bob", "chloe", "dan")
-ROTATIONS = [Rotation(1, ORDER)]
+PLAYERS = ["alice", "bob", "chloe", "dan"]
 
 
-def make_list(player: str) -> list[Game]:
-    return [
-        Game(f"{player}-coop", "Co-op game", is_coop=True),
-        Game(f"{player}-indie", "Indie game", is_indie=True),
-        Game(f"{player}-other", "Other game"),
-    ]
+def make_list(player: str, n: int = 3) -> list[Game]:
+    return [Game(f"{player}-{i}", f"{player} {i}") for i in range(n)]
 
 
-SUBMISSIONS = {p: make_list(p) for p in ORDER}
+def subs() -> dict[str, list[Game]]:
+    return {p: make_list(p) for p in PLAYERS}
 
 
-class TestRotation(unittest.TestCase):
-    def test_four_players_each_sit_out_once_per_cycle(self) -> None:
-        sat_out = [sitters_for_round(ROTATIONS, n)[0] for n in range(1, 5)]
-        self.assertEqual(sat_out, list(ORDER))
-        self.assertEqual(sitters_for_round(ROTATIONS, 5), ["alice"])
+def zero_waits() -> dict[str, int]:
+    return {p: 0 for p in PLAYERS}
 
-    def test_three_players_nobody_sits_out(self) -> None:
-        self.assertEqual(sitters_for_round([Rotation(1, ORDER[:3])], 1), [])
 
-    def test_five_players_two_sit_out(self) -> None:
-        rotations = [Rotation(1, ORDER + ("eve",))]
-        counts = {p: 0 for p in rotations[0].order}
-        for n in range(1, 6):
-            for p in sitters_for_round(rotations, n):
-                counts[p] += 1
-        self.assertEqual(set(counts.values()), {2})
+def past(took_part: list[str], picked: list[str]) -> PastRound:
+    return PastRound(frozenset(took_part), frozenset(picked))
 
-    def test_new_rotation_starts_a_fresh_cycle(self) -> None:
-        # eve joins before round 3: the new cycle starts with alice again.
-        rotations = ROTATIONS + [Rotation(3, ORDER + ("eve",))]
-        self.assertEqual(sitters_for_round(rotations, 2), ["bob"])
-        self.assertEqual(sitters_for_round(rotations, 3), ["alice", "bob"])
-        self.assertEqual(sitters_for_round(rotations, 4), ["chloe", "dan"])
 
-    def test_draw_rotation_is_seeded(self) -> None:
-        a = draw_rotation(list(ORDER), "x")
-        self.assertEqual(a, draw_rotation(list(reversed(ORDER)), "x"))
-        self.assertEqual(sorted(a), sorted(ORDER))
+class TestWaits(unittest.TestCase):
+    def test_counts_rounds_since_last_picked(self) -> None:
+        history = [past(PLAYERS, ["alice", "bob", "chloe"]),
+                   past(PLAYERS, ["alice", "bob", "dan"])]
+        self.assertEqual(waits(PLAYERS, history),
+                         {"alice": 0, "bob": 0, "chloe": 1, "dan": 0})
+
+    def test_never_picked_keeps_counting(self) -> None:
+        history = [past(PLAYERS, ["alice", "bob", "chloe"])] * 3
+        self.assertEqual(waits(PLAYERS, history)["dan"], 3)
+
+    def test_newcomer_starts_at_highest_wait(self) -> None:
+        history = [past(PLAYERS, ["alice", "bob", "chloe"])] * 2
+        w = waits(PLAYERS + ["eve"], history)
+        self.assertEqual(w["eve"], 2)
+
+    def test_rounds_skipped_dont_count(self) -> None:
+        # dan wasn't in round 2 (no list): only round 1 counts.
+        history = [past(PLAYERS, ["alice", "bob", "chloe"]),
+                   past(PLAYERS[:3], ["alice", "bob", "chloe"])]
+        self.assertEqual(waits(PLAYERS, history)["dan"], 1)
+
+
+class TestChances(unittest.TestCase):
+    def test_equal_weights_give_equal_chances(self) -> None:
+        c = pick_chances(zero_waits())
+        for p in PLAYERS:
+            self.assertAlmostEqual(c[p], 0.75)
+
+    def test_waiting_raises_your_chance(self) -> None:
+        # Left out once (weight 2 vs 1): left out again only 10%.
+        c = pick_chances({**zero_waits(), "dan": 1})
+        self.assertAlmostEqual(c["dan"], 0.9)
+        self.assertAlmostEqual(sum(c.values()), 3)
+
+    def test_three_or_fewer_players_are_always_picked(self) -> None:
+        c = pick_chances({"alice": 0, "bob": 5})
+        self.assertEqual(c, {"alice": 1.0, "bob": 1.0})
 
 
 class TestDraw(unittest.TestCase):
-    def test_sitter_gets_no_pick_and_slots_are_filled(self) -> None:
-        picks = draw_round(2, "seed", ROTATIONS, SUBMISSIONS)
-        players = {p.player for p in picks}
+    def test_three_different_players_one_game_each(self) -> None:
+        picks = draw_round(1, "seed", zero_waits(), subs())
         self.assertEqual(len(picks), 3)
-        self.assertNotIn("bob", players)
-        self.assertEqual(len(players), 3)
-        self.assertEqual({p.slot for p in picks}, set(Slot))
+        self.assertEqual(len({p.player for p in picks}), 3)
         for pick in picks:
-            self.assertTrue(pick.game.fits(pick.slot))
-            self.assertIn(pick.game, SUBMISSIONS[pick.player])
+            self.assertTrue(pick.game.id.startswith(pick.player))
 
-    def test_same_seed_same_result(self) -> None:
-        a = draw_round(1, "round-01", ROTATIONS, SUBMISSIONS)
-        b = draw_round(1, "round-01", ROTATIONS, SUBMISSIONS)
+    def test_same_seed_same_picks(self) -> None:
+        a = draw_round(1, "seed", zero_waits(), subs())
+        b = draw_round(1, "seed", zero_waits(), subs())
         self.assertEqual(a, b)
 
-    def test_played_games_are_excluded(self) -> None:
-        played = frozenset(g.id for p in ORDER for g in SUBMISSIONS[p]
-                           if g.id.endswith("-other"))
-        for n in range(1, 9):
-            for pick in draw_round(n, "s", ROTATIONS, SUBMISSIONS, played):
+    def test_list_size_doesnt_change_odds(self) -> None:
+        lists = subs()
+        lists["alice"] = make_list("alice", 10)
+        lists["bob"] = make_list("bob", 1)
+        counts: Counter[str] = Counter()
+        for i in range(2000):
+            for pick in draw_round(1, f"s{i}", zero_waits(), lists):
+                counts[pick.player] += 1
+        for p in PLAYERS:
+            self.assertAlmostEqual(counts[p] / 2000, 0.75, delta=0.05)
+
+    def test_long_wait_is_picked_more(self) -> None:
+        w = {**zero_waits(), "dan": 1}
+        left_out = 0
+        for i in range(2000):
+            picks = draw_round(1, f"s{i}", w, subs())
+            left_out += "dan" not in {p.player for p in picks}
+        self.assertAlmostEqual(left_out / 2000, 0.10, delta=0.03)
+
+    def test_played_games_are_never_drawn(self) -> None:
+        played = frozenset(g.id for games in subs().values()
+                           for g in games[:2])
+        for i in range(50):
+            for pick in draw_round(1, f"s{i}", zero_waits(), subs(),
+                                   played):
                 self.assertNotIn(pick.game.id, played)
 
-    def test_list_without_coop_is_rejected(self) -> None:
-        bad = dict(SUBMISSIONS)
-        bad["dan"] = [g for g in make_list("dan") if not g.is_coop]
-        with self.assertRaises(DrawError):
-            draw_round(1, "s", ROTATIONS, bad)
+    def test_player_with_only_played_games_is_skipped(self) -> None:
+        played = frozenset(g.id for g in make_list("dan"))
+        for i in range(50):
+            picks = draw_round(1, f"s{i}", zero_waits(), subs(), played)
+            self.assertNotIn("dan", {p.player for p in picks})
 
-    def test_list_whose_coop_games_were_played_is_rejected(self) -> None:
-        with self.assertRaisesRegex(DrawError, "dan.*co-op"):
-            draw_round(1, "s", ROTATIONS, SUBMISSIONS,
-                       frozenset({"dan-coop"}))
+    def test_shared_game_never_blocks_a_round(self) -> None:
+        x = Game("x", "Shared")
+        lists = {"alice": [x], "bob": [x], "chloe": make_list("chloe"),
+                 "dan": make_list("dan")}
+        for i in range(50):
+            picks = draw_round(1, f"s{i}", zero_waits(), lists)
+            ids = [p.game.id for p in picks]
+            self.assertEqual(len(ids), len(set(ids)))
 
-    def test_missing_submission_is_rejected(self) -> None:
-        partial = {p: SUBMISSIONS[p] for p in ORDER[1:]}
-        with self.assertRaises(DrawError):
-            draw_round(2, "s", ROTATIONS, partial)
-
-    def test_sitter_needs_no_list(self) -> None:
-        partial = {p: SUBMISSIONS[p] for p in ORDER if p != "bob"}
-        self.assertEqual(len(draw_round(2, "s", ROTATIONS, partial)), 3)
-
-    def test_shared_game_never_blocks_the_draw(self) -> None:
-        # x is alice's only co-op game and bob's only indie game.
-        x = Game("x", "Shared", is_coop=True, is_indie=True)
-        subs = dict(SUBMISSIONS)
-        subs["alice"] = [x, Game("a-indie", "", is_indie=True)]
-        subs["bob"] = [x, Game("b-coop", "", is_coop=True)]
-        for seed in range(300):
-            picks = draw_round(4, str(seed), ROTATIONS, subs)
-            self.assertEqual({p.slot for p in picks}, set(Slot))
-            self.assertEqual(len({p.game.id for p in picks}), 3)
-
-    def test_no_indie_anywhere_gives_two_free_slots(self) -> None:
-        subs = {p: [g for g in make_list(p) if not g.is_indie]
-                for p in ORDER}
-        picks = draw_round(1, "s", ROTATIONS, subs)
-        self.assertEqual(sorted(p.slot.value for p in picks),
-                         ["coop", "free", "free"])
-
-    def test_impossible_round_is_reported(self) -> None:
-        # Every picker listed the same single co-op game.
-        x = Game("x", "Shared", is_coop=True)
-        subs = {p: [x] for p in ORDER}
-        with self.assertRaises(DrawError):
-            draw_round(1, "s", ROTATIONS, subs)
-
-    def test_two_long_games_are_never_picked_together(self) -> None:
-        # Round 3 sits out chloe: alice and bob both pick.
-        subs = dict(SUBMISSIONS)
-        subs["alice"] = [Game("alice-coop", "", is_coop=True, hours=40),
-                         Game("alice-indie", "", is_indie=True),
-                         Game("alice-other", "")]
-        subs["bob"] = [Game("bob-coop", "", is_coop=True),
-                       Game("bob-indie", "", is_indie=True),
-                       Game("bob-other", "", hours=50)]
-        for seed in range(200):
-            picks = draw_round(3, str(seed), ROTATIONS, subs)
+    def test_no_two_long_games(self) -> None:
+        lists = {p: [Game(f"{p}-long", "", hours=40),
+                     Game(f"{p}-short", "", hours=5)] for p in PLAYERS}
+        for i in range(50):
+            picks = draw_round(1, f"s{i}", zero_waits(), lists)
             self.assertLessEqual(sum(p.game.is_long for p in picks), 1)
 
-    def test_priority_game_is_picked_more_often_but_not_always(self) -> None:
-        subs = dict(SUBMISSIONS)
-        a = Game("dan-a", "A", is_coop=True, priority=True)
-        b = Game("dan-b", "B", is_coop=True)
-        subs["dan"] = [a, b, Game("dan-indie", "", is_indie=True)]
-        picked = {"dan-a": 0, "dan-b": 0}
-        for seed in range(400):
-            for pick in draw_round(1, str(seed), ROTATIONS, subs):
-                if pick.game.id in picked:
-                    picked[pick.game.id] += 1
-        self.assertGreater(picked["dan-a"], picked["dan-b"])
-        self.assertGreater(picked["dan-b"], 0)
+    def test_priority_star_gets_extra_weight(self) -> None:
+        lists = {p: [Game(f"{p}-a", "A", priority=True),
+                     Game(f"{p}-b", "B")] for p in PLAYERS}
+        starred = sum(p.game.id.endswith("-a")
+                      for i in range(500)
+                      for p in draw_round(1, f"s{i}", zero_waits(), lists))
+        # 3:1 weight, so ~75% of picks.
+        self.assertGreater(starred / 1500, 0.65)
+
+    def test_fewer_than_three_players_draws_fewer_games(self) -> None:
+        w = {"alice": 0, "bob": 0}
+        picks = draw_round(1, "seed", w, subs())
+        self.assertEqual({p.player for p in picks}, {"alice", "bob"})
+
+    def test_nothing_to_draw_is_an_error(self) -> None:
+        with self.assertRaises(DrawError):
+            draw_round(1, "seed", {"alice": 0}, {"alice": []})
+
+
+class TestValidate(unittest.TestCase):
+    def test_too_many_games(self) -> None:
+        with self.assertRaises(DrawError):
+            validate_submission("a", make_list("a", 11))
+
+    def test_duplicates(self) -> None:
+        g = Game("x", "X")
+        with self.assertRaises(DrawError):
+            validate_submission("a", [g, g])
+
+    def test_needs_an_unplayed_game(self) -> None:
+        games = make_list("a", 2)
+        with self.assertRaises(DrawError):
+            validate_submission("a", games,
+                                frozenset(g.id for g in games))
+        with self.assertRaises(DrawError):
+            validate_submission("a", [])
+        validate_submission("a", games, frozenset({games[0].id}))
 
 
 if __name__ == "__main__":

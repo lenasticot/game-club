@@ -14,7 +14,7 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
   data only.
 - **Per-player lists, max 10 games**, editable between rounds. Each list needs
   at least 1 unplayed co-op game. Indie games are encouraged but not required.
-- **3 slots per round**: co-op, indie, free. `indie` and `coop` are flags on a
+- **SUPERSEDED 2026-11-03 by the fair lottery (below)** — 3 slots per round: co-op, indie, free. `indie` and `coop` are flags on a
   game, not exclusive categories; any game fits the free slot. "Co-op" means
   any multiplayer game (2+ players). Genres are real genres (horror,
   adventure...); "Indie" is a type, so it's moved out of RAWG genres into the
@@ -23,7 +23,7 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
   free slot.
 - **3 games is a menu**: people may play just one of them. Show price
   (Steam, with the fetch date) so they can choose.
-- **Fairness = fixed sit-out rotation.** A random order is drawn once at round 1;
+- **SUPERSEDED 2026-11-03 by the fair lottery (below)** — Fairness = fixed sit-out rotation. A random order is drawn once at round 1;
   `order[(n - 1) % 4]` sits out round n, so everyone sits out exactly once per 4
   rounds. ("Whoever sat out last plays" alone was rejected: it doesn't guarantee
   a full cycle.) The other 3 get a random slot each, then a random fitting game
@@ -108,6 +108,18 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
   snapshot, spinning/scrolling and decelerating slot-machine style to land
   on the drawn game. Plain CSS transition + JS-computed offset, no library.
 
+- **Fair lottery draw** (2026-11-03, replaces rotation + slots): draw 3
+  different players, weight = 1 + rounds waited since last picked (only
+  rounds they took part in: in the round's `lists` or `sitting`);
+  newcomer starts at the group's highest wait; then a random game from
+  each picked list (star 3x, unplayed only, no two >30h). Person first,
+  so list size doesn't change odds. Co-op slot and the "≥1 co-op per
+  list" rule dropped; ready only needs ≥1 unplayed game. Co-op special
+  draw and an admin "remove everything" reset are parked ideas (README
+  "Ideas to improve"). Rotations removed from `club.json`; round 1 keeps
+  its slot labels (`PickRec.slot` optional). Odds shown in `/status` and
+  CLI `status` (`draw.pick_chances`). Chosen over pure pool (unfair over
+  short runs) and fixed rotation (no surprise).
 - **Discord = hybrid with the site** (2026-11-03). Slash commands for quick
   actions (`/add` with catalog+RAWG autocomplete then Steam-match card,
   `/remove`, `/star`, `/ready`, `/list`, `/status`), adds/ready announced
@@ -199,11 +211,15 @@ payloads only: never run against real Discord yet.
 (`gameclub`, `web`, `tests`).
 
 Next:
-- **Discord go-live**: user creates server + app, sets Render env vars,
-  interactions URL, runs `web.discord_register`, sets up a `/healthz`
-  pinger (README "Discord"). Then check live: autocomplete speed (RAWG
-  in <3s), ephemeral reply + public followup, editing the message on
-  button clicks — all unverified against real Discord.
+- **Discord go-live, mostly done 2026-11-03**: server, app, env vars,
+  endpoint, command registration all working live; `/status`, `/list`,
+  catalog `/add`, `/remove`, `/ready` verified by the user. Left: friends'
+  ids into `DISCORD_PLAYERS` (bot replies with their id), `/healthz`
+  pinger, `/add` of a *new* game (blocked: RAWG was down, Cloudflare 522,
+  2026-11-03; user chose to wait, Steam-only fallback offered and declined
+  for now), and `/draw`/`/close` live.
+- User does git commits/pushes. The live app pushes data commits, so
+  `git pull --rebase` before every push.
 - **UI/visual design pass** — explicitly not done yet, player feedback
   2026-10-16 ("we will have to work on the overall rendering"). Next
   session: use a design-focused agent/subagent for this, not ad-hoc CSS
@@ -211,8 +227,6 @@ Next:
 - Confirm Render Auto-Deploy is off (was causing crashes around the 3rd
   game add before this was diagnosed 2026-10-16) and RAWG_API_KEY is set
   and working live.
-- Run an actual `python3 -m gameclub draw` against the real live `data/`
-  once lists are ready for round 1 (draw stays CLI/admin-only by design).
 - Discord webhook post still untested against a real webhook.
 - Static display site idea is dropped — reveal lives in the Flask app
   (`/round`), see Decided above.

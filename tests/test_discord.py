@@ -182,7 +182,7 @@ class TestDiscord(unittest.TestCase):
             self.command(BOB, "add", game="whatever")
         self.assertIn("(KeyError)", self.reply()["content"])
 
-    def test_ready_needs_coop_then_announces(self) -> None:
+    def test_ready_needs_a_game_then_announces(self) -> None:
         self.command(ALICE, "ready")
         self.assertIn("⚠️", self.reply()["content"])
         self.assertFalse(self.store().is_finalized("alice"))

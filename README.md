@@ -13,34 +13,42 @@ and keeps all its data as JSON files in this repo, so git is the history.
 ## How a round works
 
 1. **Everyone keeps a list** of up to 10 games they'd like the club to
-   play. Lists can change any time between rounds. Each list needs at
-   least one co-op game (anything with 2+ players) that the club hasn't
-   played yet. Indie games are encouraged.
+   play. Lists can change any time between rounds. Indie games are
+   encouraged.
 2. **Players mark their list as ready** when they're done editing it.
    Changing the list afterwards un-marks it.
-3. **The draw** picks 3 games, one per slot:
-   - **Co-op**: a multiplayer game
-   - **Indie**: an indie game (if nobody has one left, this becomes a
-     second free slot)
-   - **Free**: anything
+3. **The draw** picks 3 games from 3 different people's lists.
 4. **The 3 games are a menu.** Nobody has to play all of them; prices
    (from Steam, with the date they were fetched) help people choose.
 5. **The group meets**, discusses, and the admin closes the round. Lists
    open for the next one.
 
-### Draw rules
+### Draw rules: a fair lottery
 
-- **Sit-out rotation.** With 4 players, one person's list sits out each
-  round. The order is drawn once at round 1 and repeats, so everyone sits
-  out exactly once every 4 rounds. With 3 players nobody sits out; with 5,
-  two do. A new member starts a new rotation.
-- The remaining players each get one slot at random, then one game from
-  their own list that fits it. The draw backtracks over slot assignments,
-  so a game on two lists never blocks a round.
+The draw has to be random (otherwise it's no fun) and fair (otherwise
+someone's taste never comes up). It works in two steps:
+
+1. **Who**: 3 different people are drawn at random, never 2 games from
+   the same person. Each person's weight is **1 + the number of rounds
+   they've waited since they were last picked**, so being left out raises
+   your odds next time. With 4 people, someone left out has a 90% chance
+   to be picked the next round instead of 75%; being left out twice in a
+   row drops from 25% (pure chance) to 10%. Over time everyone gets
+   picked about equally, but nobody knows in advance who will be.
+2. **What**: a random game from each picked person's list. **List size
+   doesn't matter**: the person is drawn first, so a 2-game list has the
+   same odds as a 10-game list.
+
+More rules:
 - **Priority star**: each player can star one game on their list. It gets
-  3x the weight in the random pick, not a guarantee.
+  3x the weight in the pick from their list, not a guarantee.
 - **No two long games** (over 30 hours) in the same round.
-- A game is never drawn twice, ever.
+- A game is never drawn twice, ever. If two picked people listed the same
+  game, the draw works around it.
+- **Any group size**: it's always "3 people among everyone with a list".
+  A new member starts with the highest weight in the group, so they're
+  likely in their first round. Everyone's current odds are shown in
+  Discord's `/status` and the CLI's `status`.
 - **Draws are one-shot and public.** Each uses a fresh random seed, stored
   with the round, and is announced right away. There is no redraw, and a
   new draw is refused until the previous round is closed.
@@ -69,7 +77,7 @@ Players never touch git or a terminal. They use either:
 | `/star game:` | make a game your priority |
 | `/ready` | mark your list as done |
 | `/list [player]` | show a list (yours by default) |
-| `/status` | who's ready, the current round |
+| `/status` | who's ready, everyone's odds, the current round |
 | `/draw` | admin: draw the next round |
 | `/close` | admin: close the current round |
 
@@ -117,10 +125,10 @@ price and search.
 
 | File | Content |
 |---|---|
-| `club.json` | players, sit-out rotations, ready flags, price country |
+| `club.json` | players, ready flags, price country |
 | `games.json` | game metadata cache (title, cover, genres, co-op/indie, length, Steam price) |
 | `submissions.json` | each player's current list |
-| `rounds.json` | every draw: seed, who sat out, the lists it used, the picks |
+| `rounds.json` | every draw: seed, who wasn't picked, the lists it used, the picks |
 
 **Privacy**: the repo is public, so players appear under a nickname only.
 Discord user ids live in an environment variable on the server
@@ -152,7 +160,7 @@ python3 -m gameclub game add hades                 # RAWG slug; fetches price
 python3 -m gameclub game add mygame --manual --title "My Game" --coop
 python3 -m gameclub game set hades --no-indie      # fix flags, --hours, ...
 python3 -m gameclub list set alice hades mygame    # replace a list
-python3 -m gameclub status                         # who sits out, list checks
+python3 -m gameclub status                         # everyone's odds, list checks
 python3 -m gameclub draw                           # draw + announce
 python3 -m gameclub round close 1                  # after the meeting
 ```
@@ -246,10 +254,29 @@ GitHub is the real storage; the server's copy is disposable.
 Tests run without network access: RAWG, Steam and Discord are mocked, and
 git sync is tested against throwaway local repositories.
 
+## Ideas to improve
+
+- **Co-op special draw.** Rounds used to have a co-op slot (and every list
+  needed a co-op game); it was dropped for a simpler, fairer lottery.
+  Playing together could come back as an optional extra: a separate
+  co-op draw, or a co-op bonus round now and then. Games already carry a
+  co-op flag (from RAWG), so the data is ready.
+- **Admin reset command.** An admin-only way to wipe the lists (or start
+  the club over from round 1). Everything stays recoverable from git
+  history.
+- **More than 3 games per round** once the group grows past ~6 people,
+  so each person still gets picked regularly.
+- **Ratings and meeting dates** per round (in the data model, not built
+  yet).
+- **Steam-only game add** as a fallback when RAWG is down.
+
 ### Known limits
 
-- RAWG's co-op/indie flags and playtime are trusted as-is when a game is
-  added; the admin can fix them with `game set`.
+- RAWG's flags (co-op, indie) and playtime are trusted as-is when a game
+  is added; the admin can fix them with `game set`. Playtime matters for
+  the "no two long games" rule.
+- Round 1 was drawn with the earlier system (fixed sit-out rotation and
+  co-op/indie/free slots); its record keeps the slot labels.
 - Steam prices use unofficial store endpoints; games not on Steam have no
   price.
 - The Discord integration is tested against hand-written payloads, and

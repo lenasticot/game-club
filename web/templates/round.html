@@ -8,12 +8,16 @@
   {% else %}
     <p class="hint">
       Round {{ round.number }}, drawn {{ round.drawn_at[:10] }}.
-      {% if sitting %}Sitting out: {{ sitting|join(', ') }}.{% endif %}
+      {% if sitting %}Not picked this time: {{ sitting|join(', ') }}.{% endif %}
     </p>
 
     {% for s in slots %}
       <section class="reveal-slot">
-        <h2>{{ s.label }} <span class="hint">({{ s.player }})</span></h2>
+        {% if s.label %}
+          <h2>{{ s.label }} <span class="hint">({{ s.player }})</span></h2>
+        {% else %}
+          <h2>From {{ s.player }}'s list</h2>
+        {% endif %}
         <div class="reel-track">
           <div class="reel" id="reel-{{ loop.index }}">
             {% for g in s.reel %}

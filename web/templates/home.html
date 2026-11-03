@@ -2,10 +2,6 @@
 {% block title %}{{ player.name }}'s list - Game Club{% endblock %}
 {% block content %}
   <h1>{{ player.name }}'s list</h1>
-  {% if not has_coop %}
-    <p class="warning">Your list needs at least one unplayed co-op game
-      before a round can draw from it.</p>
-  {% endif %}
   {% if finalize_error %}<p class="warning">{{ finalize_error }}</p>{% endif %}
   {% if finalized %}
     <p class="success">You're marked done for the next round.</p>

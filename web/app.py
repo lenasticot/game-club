@@ -92,8 +92,6 @@ def create_app(data_dir: Optional[Path] = None,
         entries = s.submissions.get(pid, [])
         games = [(e, s.game(e["game_id"])) for e in entries]
         played = s.played()
-        has_coop = any(g["is_coop"] and g["id"] not in played
-                       for _, g in games)
         q = request.args.get("q", "").strip()
         catalog_matches: list[GameRec] = []
         rawg_matches: list[dict[str, object]] = []
@@ -108,7 +106,7 @@ def create_app(data_dir: Optional[Path] = None,
         return render_template(
             "home.html", player=s.player(pid), games=games, query=q,
             catalog_matches=catalog_matches, rawg_matches=rawg_matches,
-            max_list_size=MAX_LIST_SIZE, has_coop=has_coop, played=played,
+            max_list_size=MAX_LIST_SIZE, played=played,
             finalized=s.is_finalized(pid),
             search_error=session.pop("search_error", None),
             finalize_error=session.pop("finalize_error", None))
@@ -223,7 +221,7 @@ def create_app(data_dir: Optional[Path] = None,
             random.shuffle(filler)
             reel = (filler * 3)[:REEL_FILLER_CAP] + [s.game(pick["game_id"])]
             slots.append({
-                "slot": pick["slot"], "label": SLOT_LABELS[pick["slot"]],
+                "label": SLOT_LABELS.get(pick.get("slot", ""), ""),
                 "player": s.player(pick["player"])["name"],
                 "game": s.game(pick["game_id"]), "reel": reel,
             })

@@ -4,15 +4,10 @@ import json
 import secrets
 import urllib.request
 
-from gameclub.draw import (
-    Rotation,
-    draw_rotation,
-    draw_round,
-    rotation_for_round,
-    sitters_for_round,
-)
+from gameclub.draw import draw_round, pick_chances, waits
 from gameclub.store import GameRec, PickRec, RoundRec, Store, StoreError
 
+# Only rounds drawn with the old slot system (round 1) have slots.
 SLOT_LABELS = {"coop": "Co-op", "indie": "Indie", "free": "Free pick"}
 
 
@@ -29,41 +24,34 @@ def check_can_draw(store: Store) -> None:
         raise StoreError("no active players")
 
 
-def preview_rotations(store: Store) -> list[Rotation]:
-    """The rotations a draw would use, without saving a first one.
+def next_waits(store: Store) -> dict[str, int]:
+    """Rounds waited by each player in the next draw's lottery."""
+    return waits(store.lottery_players(), store.history())
 
-    Before round 1 there is no order yet; a provisional one (not the one
-    the real draw will produce) is used only for checks.
-    """
-    if store.rotations_raw:
-        return store.rotations()
-    return [Rotation(1, tuple(sorted(store.active_ids())))]
+
+def chances(store: Store) -> dict[str, float]:
+    """Each player's chance of being picked in the next draw."""
+    return pick_chances(next_waits(store))
 
 
 def run_draw(store: Store, seed: str, now: str) -> RoundRec:
-    """Draw the next round and add it to the store (caller saves).
-
-    On round 1 the sit-out order is drawn from the same seed.
-    """
+    """Draw the next round and add it to the store (caller saves)."""
     check_can_draw(store)
     number = store.next_round_number()
-    if not store.rotations_raw:
-        store.set_first_rotation(draw_rotation(store.active_ids(), seed))
-    rotations = store.rotations()
-    order = rotation_for_round(rotations, number).order
-    lists = {p: store.list_games(p) for p in order if p in store.submissions}
-    picks = draw_round(number, seed, rotations, lists, store.played())
+    player_waits = next_waits(store)
+    lists = {p: store.list_games(p) for p in player_waits}
+    picks = draw_round(number, seed, player_waits, lists, store.played())
+    picked = {p.player for p in picks}
     rec = RoundRec(
         number=number,
         seed=seed,
         drawn_at=now,
         status="drawn",
         meeting_date=None,
-        sitting=sitters_for_round(rotations, number),
+        sitting=sorted(p for p in player_waits if p not in picked),
         lists={p: [e["game_id"] for e in store.submissions[p]]
                for p in lists},
-        picks=[PickRec(slot=p.slot.value, player=p.player,
-                       game_id=p.game.id) for p in picks],
+        picks=[PickRec(player=p.player, game_id=p.game.id) for p in picks],
     )
     store.rounds.append(rec)
     store.clear_finalized()
@@ -89,17 +77,18 @@ def announcement(store: Store, rec: RoundRec) -> str:
 
     lines = [f"**Game Club, round {rec['number']}**"]
     if rec["sitting"]:
-        lines.append("Sitting out: " + ", ".join(map(name, rec["sitting"])))
+        lines.append("Not picked this time: "
+                     + ", ".join(map(name, rec["sitting"])))
     lines.append("")
     for pick in rec["picks"]:
         game = store.game(pick["game_id"])
-        lines.append(f"{SLOT_LABELS[pick['slot']]}: **{game['title']}** "
+        label = SLOT_LABELS.get(pick.get("slot", ""), "")
+        prefix = f"{label}: " if label else "• "
+        lines.append(f"{prefix}**{game['title']}** "
                      f"(from {name(pick['player'])})")
         detail = game_line(game)
         if detail:
             lines.append(f"  {detail}")
-    if not any(p["slot"] == "indie" for p in rec["picks"]):
-        lines.append("(No indie game available, so two free picks.)")
     lines.append("")
     lines.append(f"Seed `{rec['seed']}`, drawn {rec['drawn_at']}")
     return "\n".join(lines)

@@ -12,8 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from gameclub import prices, rawg, rounds
-from gameclub.draw import DrawError, draw_round, sitters_for_round
-from gameclub.draw import validate_submission
+from gameclub.draw import DrawError, draw_round, validate_submission
 from gameclub.store import GameRec, Store, StoreError, new_game
 
 
@@ -148,17 +147,18 @@ def cmd_status(store: Store, args: argparse.Namespace) -> None:
     if store.rounds:
         last = store.rounds[-1]
         print(f"last round: {last['number']} ({last['status']})")
-    rotations = rounds.preview_rotations(store)
-    sitting: list[str] = []
-    if not store.rotations_raw:
-        print("sit-out order: drawn at round 1, so every list must be valid")
-    else:
-        sitting = sitters_for_round(rotations, number)
-        names = ", ".join(store.player(p)["name"] for p in sitting)
-        print(f"round {number} sits out: {names or 'nobody'}")
-    pickers = [p for p in store.active_ids() if p not in sitting]
+    player_waits = rounds.next_waits(store)
+    print(f"round {number} odds of being picked:")
+    for pid, chance in sorted(rounds.chances(store).items(),
+                              key=lambda kv: -kv[1]):
+        print(f"  {store.player(pid)['name']}: {chance:.0%} "
+              f"(waited {player_waits[pid]})")
+    for pid in store.active_ids():
+        if pid not in player_waits:
+            print(f"  {store.player(pid)['name']}: nothing unplayed on "
+                  "their list, not in the draw")
     ok = True
-    for pid in pickers:
+    for pid in player_waits:
         try:
             validate_submission(pid, store.list_games(pid), store.played())
         except DrawError as e:
@@ -168,9 +168,9 @@ def cmd_status(store: Store, args: argparse.Namespace) -> None:
         return
     # The search behind draw_round is exhaustive, so whether a round can
     # be drawn does not depend on the seed. Any seed works for this check.
-    lists = {p: store.list_games(p) for p in pickers}
+    lists = {p: store.list_games(p) for p in player_waits}
     try:
-        draw_round(number, "check", rotations, lists, store.played())
+        draw_round(number, "check", player_waits, lists, store.played())
         print(f"round {number} can be drawn")
     except DrawError as e:
         print(f"  problem: {e}")

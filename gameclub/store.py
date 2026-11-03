@@ -1,6 +1,6 @@
 """Load and save the club data kept as JSON files in data/.
 
-club.json             players, sit-out rotations, country used for prices
+club.json             players, ready flags, country used for prices
 games.json            game metadata, fetched once and cached
 submissions.json      each player's current list: [{game_id, priority}]
 rounds.json           drawn rounds, with the lists they were drawn from
@@ -15,7 +15,7 @@ from typing import Any, Optional, TypedDict
 
 from dataclasses import replace
 
-from gameclub.draw import Game, Rotation
+from gameclub.draw import Game, PastRound
 
 
 class PlayerRec(TypedDict):
@@ -59,10 +59,15 @@ class GameRec(TypedDict):
     metadata_fetched_at: Optional[str]
 
 
-class PickRec(TypedDict):
-    slot: str
+class _PickBase(TypedDict):
     player: str
     game_id: str
+
+
+class PickRec(_PickBase, total=False):
+    # co-op/indie/free: only in rounds drawn with the old slot system
+    # (round 1). The fair lottery has no slots.
+    slot: str
 
 
 class RoundRec(TypedDict):
@@ -71,6 +76,7 @@ class RoundRec(TypedDict):
     drawn_at: str
     status: str
     meeting_date: Optional[str]
+    # Players in the lottery who weren't picked.
     sitting: list[str]
     lists: dict[str, list[str]]
     picks: list[PickRec]
@@ -109,7 +115,6 @@ class Store:
         self.dir = data_dir
         club = _read(data_dir / "club.json", {})
         self.players: list[PlayerRec] = club.get("players", [])
-        self.rotations_raw: list[dict[str, Any]] = club.get("rotations", [])
         self.price_country: str = club.get("price_country", "nl")
         # Players who flagged their list "done" for the next round. Cleared
         # when that round is drawn (gameclub.rounds.run_draw).
@@ -125,7 +130,6 @@ class Store:
         self.dir.mkdir(parents=True, exist_ok=True)
         _write(self.dir / "club.json", {
             "players": self.players,
-            "rotations": self.rotations_raw,
             "price_country": self.price_country,
             "finalized": self.finalized,
         })
@@ -166,38 +170,9 @@ class Store:
             id=player_id, name=name, platforms=platforms, active=True))
         self.secrets[player_id] = SecretRec(
             discord_id=discord_id, steam_id=steam_id)
-        if self.rotations_raw:
-            order = list(self._current_order()) + [player_id]
-            self._start_rotation(order)
 
     def deactivate_player(self, player_id: str) -> None:
         self.player(player_id)["active"] = False
-        if self.rotations_raw:
-            order = [p for p in self._current_order() if p != player_id]
-            self._start_rotation(order)
-
-    # Rotations
-
-    def rotations(self) -> list[Rotation]:
-        return [Rotation(r["start_round"], tuple(r["order"]))
-                for r in self.rotations_raw]
-
-    def _current_order(self) -> tuple[str, ...]:
-        latest = max(self.rotations(), key=lambda r: r.start_round)
-        return latest.order
-
-    def _start_rotation(self, order: list[str]) -> None:
-        """Start a new cycle at the next round (membership changed).
-
-        Several changes before the same draw collapse into one rotation.
-        """
-        start = self.next_round_number()
-        self.rotations_raw = [r for r in self.rotations_raw
-                              if r["start_round"] != start]
-        self.rotations_raw.append({"start_round": start, "order": order})
-
-    def set_first_rotation(self, order: tuple[str, ...]) -> None:
-        self.rotations_raw = [{"start_round": 1, "order": list(order)}]
 
     # Games
 
@@ -229,6 +204,19 @@ class Store:
 
     def next_round_number(self) -> int:
         return len(self.rounds) + 1
+
+    def history(self) -> list[PastRound]:
+        return [PastRound(
+            took_part=frozenset(r["lists"]) | frozenset(r["sitting"]),
+            picked=frozenset(p["player"] for p in r["picks"]))
+            for r in self.rounds]
+
+    def lottery_players(self) -> list[str]:
+        """Active players with something left to draw: the next lottery."""
+        played = self.played()
+        return [p for p in self.active_ids()
+                if any(e["game_id"] not in played
+                       for e in self.submissions.get(p, []))]
 
     def played(self) -> frozenset[str]:
         return frozenset(p["game_id"] for r in self.rounds

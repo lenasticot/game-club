@@ -6,7 +6,6 @@ import unittest
 from pathlib import Path
 
 from gameclub.cli import main
-from gameclub.store import Store
 
 
 def run(data: Path, *argv: str) -> tuple[int, str]:
@@ -47,10 +46,8 @@ class TestCli(unittest.TestCase):
         rounds = json.loads((self.data / "rounds.json").read_text())
         self.assertEqual(len(rounds), 1)
         self.assertEqual(len(rounds[0]["picks"]), 3)
-        club = json.loads((self.data / "club.json").read_text())
-        self.assertEqual(len(club["rotations"][0]["order"]), 4)
-        self.assertEqual(rounds[0]["sitting"],
-                         club["rotations"][0]["order"][:1])
+        self.assertEqual(len(rounds[0]["sitting"]), 1)
+        left_out = rounds[0]["sitting"][0]
 
         # No second draw until the round is closed.
         code, out = run(self.data, "draw")
@@ -59,24 +56,23 @@ class TestCli(unittest.TestCase):
 
         run(self.data, "round", "close", "1")
         code, out = run(self.data, "status")
-        sitter = club["rotations"][0]["order"][1]
-        self.assertIn(f"sits out: {sitter.title()}", out)
+        # Left out once: weight 2 vs 1, so a 90% chance next round.
+        self.assertIn(f"{left_out.title()}: 90% (waited 1)", out)
 
-    def test_list_set_rejects_unknown_game_and_missing_coop(self) -> None:
+    def test_list_set_rejects_unknown_game(self) -> None:
         code, out = run(self.data, "list", "set", "alice", "nope")
         self.assertEqual(code, 1)
         self.assertIn("unknown game", out)
-        code, out = run(self.data, "list", "set", "alice", "alice-indie")
-        self.assertEqual(code, 1)
-        self.assertIn("co-op", out)
 
-    def test_player_joining_after_round_1_starts_new_rotation(self) -> None:
+    def test_player_joining_later_starts_at_highest_wait(self) -> None:
         run(self.data, "draw")
+        run(self.data, "round", "close", "1")
         run(self.data, "player", "add", "eve", "Eve")
-        store = Store(self.data)
-        rotations = store.rotations()
-        self.assertEqual([r.start_round for r in rotations], [1, 2])
-        self.assertEqual(rotations[1].order[-1], "eve")
+        run(self.data, "game", "add", "eve-1", "--manual", "--title", "E")
+        run(self.data, "list", "set", "eve", "eve-1")
+        code, out = run(self.data, "status")
+        self.assertIn("Eve: ", out)
+        self.assertIn("(waited 1)", out.split("Eve: ")[1].split("\n")[0])
 
 
 if __name__ == "__main__":

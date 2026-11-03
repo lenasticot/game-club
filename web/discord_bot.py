@@ -441,13 +441,17 @@ class Bot:
             titles = ", ".join(s.game(p["game_id"])["title"]
                                for p in last["picks"])
             lines.append(f"**Round {last['number']}** ({state}): {titles}")
-        lines.append(f"**Lists for round {s.next_round_number()}:**")
+        lines.append(f"**Lists for round {s.next_round_number()}** "
+                     "(odds of being picked):")
+        odds = rounds.chances(s)
         for p in s.players:
             if not p["active"]:
                 continue
             mark = "✅" if s.is_finalized(p["id"]) else "⏳"
             count = len(s.submissions.get(p["id"], []))
-            lines.append(f"{mark} {p['name']} ({count} games)")
+            chance = f"{odds[p['id']]:.0%}" if p["id"] in odds \
+                else "no list"
+            lines.append(f"{mark} {p['name']} ({count} games) · {chance}")
         buttons = [{"type": BUTTON, "style": SUCCESS, "label": "I'm ready",
                     "custom_id": "ready"}]
         buttons += self._link("Players' lists", "/players")

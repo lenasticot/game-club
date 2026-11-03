@@ -75,7 +75,6 @@ class TestWeb(unittest.TestCase):
         r = self.client.get("/")
         self.assertEqual(r.status_code, 200)
         self.assertIn(b"Alice", r.data)
-        self.assertIn(b"needs at least one unplayed co-op", r.data)
 
     def test_add_remove_priority_existing_game(self) -> None:
         self.pick("alice")
@@ -178,11 +177,11 @@ class TestWeb(unittest.TestCase):
         self.assertTrue(alice["finalized"])
         self.assertEqual(alice["games"][0]["title"], "Existing Coop")
 
-    def test_finalize_fails_without_coop_game(self) -> None:
+    def test_finalize_fails_with_empty_list(self) -> None:
         self.pick("bob")
         r = self.post("/list/finalize", follow_redirects=True)
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"co-op", r.data)
+        self.assertIn(b"no unplayed game", r.data)
         store = Store(self.data)
         self.assertFalse(store.is_finalized("bob"))
 
