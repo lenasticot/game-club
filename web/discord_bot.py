@@ -219,8 +219,9 @@ class Bot:
                     "data": {"choices": self._autocomplete(pid, data)}}
         if pid is None:
             return {"type": MESSAGE, "data": {
-                "content": "You're not linked to a Game Club player yet; "
-                           "ask the admin to add your Discord id.",
+                "content": "You're not linked to a Game Club player yet. "
+                           "Send this to the admin so they can add you: "
+                           f"`{uid}`",
                 "flags": EPHEMERAL}}
         if kind == COMPONENT:
             return self._component(payload, pid, uid, data)

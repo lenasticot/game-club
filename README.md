@@ -1,151 +1,258 @@
 # Game Club
 
-A video game club run like a book club: each round, 3 games are drawn from
-the members' lists, everyone plays them, then we meet to discuss.
+A video game club that works like a book club. Every few months, three
+games are drawn from the members' wishlists, everyone plays them, and the
+group meets to talk about them.
 
-## Rules
+This repo holds everything that runs the club: the draw rules, a small
+website where members manage their lists and watch the draw, and a
+Discord integration so most of it can be done without leaving the chat.
+It is built for a group of friends (4 to 5 people), runs on free hosting,
+and keeps all its data as JSON files in this repo, so git is the history.
 
-- Each player keeps a list of up to 10 games, which they can update between
-  rounds. Each list needs at least one co-op (any multiplayer) game. Indie
-  games are encouraged.
-- Every round has 3 slots: co-op, indie, free. If nobody drawn has an indie
-  game left, the indie slot becomes a second free slot.
-- A fixed rotation order, drawn at round 1, decides who sits out. With 4
-  players, one person sits out per round and everyone sits out exactly once
-  every 4 rounds. A new member starts a new cycle.
-- The remaining players get one slot each at random, then one game from
-  their own list that fits that slot. Games already drawn never come back.
-- The 3 games are a menu: play one, two or all three.
-- Each draw uses a fresh random seed, is stored in `data/rounds.json` and is
-  announced to everyone. There is no redraw.
+## How a round works
 
-## Usage
+1. **Everyone keeps a list** of up to 10 games they'd like the club to
+   play. Lists can change any time between rounds. Each list needs at
+   least one co-op game (anything with 2+ players) that the club hasn't
+   played yet. Indie games are encouraged.
+2. **Players mark their list as ready** when they're done editing it.
+   Changing the list afterwards un-marks it.
+3. **The draw** picks 3 games, one per slot:
+   - **Co-op**: a multiplayer game
+   - **Indie**: an indie game (if nobody has one left, this becomes a
+     second free slot)
+   - **Free**: anything
+4. **The 3 games are a menu.** Nobody has to play all of them; prices
+   (from Steam, with the date they were fetched) help people choose.
+5. **The group meets**, discusses, and the admin closes the round. Lists
+   open for the next one.
+
+### Draw rules
+
+- **Sit-out rotation.** With 4 players, one person's list sits out each
+  round. The order is drawn once at round 1 and repeats, so everyone sits
+  out exactly once every 4 rounds. With 3 players nobody sits out; with 5,
+  two do. A new member starts a new rotation.
+- The remaining players each get one slot at random, then one game from
+  their own list that fits it. The draw backtracks over slot assignments,
+  so a game on two lists never blocks a round.
+- **Priority star**: each player can star one game on their list. It gets
+  3x the weight in the random pick, not a guarantee.
+- **No two long games** (over 30 hours) in the same round.
+- A game is never drawn twice, ever.
+- **Draws are one-shot and public.** Each uses a fresh random seed, stored
+  with the round, and is announced right away. There is no redraw, and a
+  new draw is refused until the previous round is closed.
+
+## How members use it
+
+Players never touch git or a terminal. They use either:
+
+**The website** (Flask):
+- pick their name (no passwords: the site's URL is the shared secret, like
+  a Tricount link)
+- search for a game (club catalog first, then [RAWG](https://rawg.io)),
+  confirm its Steam page for the price, add it to their list
+- star a game, remove one, mark their list ready
+- `/players`: everyone's lists, refreshed live
+- `/games`: the whole club catalog
+- `/round`: the draw reveal, a slot-machine reel of cover art per slot
+  that lands on the drawn game
+
+**Discord slash commands**:
+
+| Command | What it does |
+|---|---|
+| `/add game:` | add a game (suggestions as you type, from the catalog and RAWG) |
+| `/remove game:` | remove a game from your list |
+| `/star game:` | make a game your priority |
+| `/ready` | mark your list as done |
+| `/list [player]` | show a list (yours by default) |
+| `/status` | who's ready, the current round |
+| `/draw` | admin: draw the next round |
+| `/close` | admin: close the current round |
+
+Adds and "ready" are announced in the channel. The draw announcement hides
+the picks behind spoiler tags and links to the site's reveal.
+
+## Architecture
 
 ```
-python3 -m gameclub player add alice Alice --platform PC
-python3 -m gameclub game search "hades"          # needs RAWG_API_KEY
-python3 -m gameclub game add hades               # RAWG slug; fetches price
+gameclub/          core, no web dependencies
+  draw.py          draw logic: pure functions, same seed = same result
+  store.py         reading/writing the JSON files in data/
+  rounds.py        running, recording and announcing a draw
+  rawg.py          game metadata from RAWG (fetched once, cached)
+  prices.py        Steam prices and Steam store search
+  cli.py           admin command line
+web/
+  app.py           website (Flask)
+  club.py          shared data access and list actions (site + Discord)
+  discord_bot.py   Discord slash commands
+  discord_register.py  registers the commands on a Discord server
+  git_sync.py      pull / commit / push of data/
+  templates/, static/
+data/              the club's data (see below)
+tests/
+```
+
+**Data lives in git.** Every change made on the site or in Discord is
+written to `data/`, committed, and pushed to GitHub by the app itself,
+so the commit log is a full audit trail. The admin's command line edits
+the same files, and the app pulls before every write (and every 30s on
+reads), so both stay in sync.
+
+**Discord without a bot process.** Discord's "interactions endpoint" mode
+sends each command as an HTTP request to the same Flask app
+(`/discord/interactions`), so there is one thing to host. Anything slow
+(RAWG, Steam, git) answers "thinking..." right away and finishes in the
+background, to stay within Discord's 3 second limit.
+
+**External APIs are called only when a game is added**, never at draw
+time: RAWG for metadata, Steam's (unofficial, keyless) store endpoints for
+price and search.
+
+### Data files
+
+| File | Content |
+|---|---|
+| `club.json` | players, sit-out rotations, ready flags, price country |
+| `games.json` | game metadata cache (title, cover, genres, co-op/indie, length, Steam price) |
+| `submissions.json` | each player's current list |
+| `rounds.json` | every draw: seed, who sat out, the lists it used, the picks |
+
+**Privacy**: the repo is public, so players appear under a nickname only.
+Discord user ids live in an environment variable on the server
+(`DISCORD_PLAYERS`) and, for local use, in `data/player_secrets.json`,
+which is gitignored.
+
+## Running your own
+
+### Requirements
+
+- Python 3.10+
+- A free [RAWG API key](https://rawg.io/apidocs) for game search
+- For hosting: a GitHub repo you control, a [Render](https://render.com)
+  account (free tier is enough), optionally a Discord server
+
+### Local setup
+
+```
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-web.txt
+```
+
+Add players and games with the CLI (the admin side):
+
+```
+python3 -m gameclub player add alice Alice
+python3 -m gameclub game search "hades"            # needs RAWG_API_KEY
+python3 -m gameclub game add hades                 # RAWG slug; fetches price
 python3 -m gameclub game add mygame --manual --title "My Game" --coop
-python3 -m gameclub game set hades --no-indie    # fix flags, --hours, ...
-python3 -m gameclub list set alice hades mygame  # replace Alice's list
-python3 -m gameclub status                       # who sits out, list checks
-python3 -m gameclub draw                         # draw + announce
-python3 -m gameclub round close 1                # after the meeting
+python3 -m gameclub game set hades --no-indie      # fix flags, --hours, ...
+python3 -m gameclub list set alice hades mygame    # replace a list
+python3 -m gameclub status                         # who sits out, list checks
+python3 -m gameclub draw                           # draw + announce
+python3 -m gameclub round close 1                  # after the meeting
 ```
 
-Set `DISCORD_WEBHOOK_URL` to post draws to Discord. Commit `data/` after
-each change and push it: the live app pulls before every write and every
-30s on reads, so it picks your change up.
+`draw` posts to Discord if `DISCORD_WEBHOOK_URL` is set, otherwise it
+prints the announcement. After CLI changes, commit and push `data/` so
+the live site picks them up.
 
-## Entry site
-
-A small Flask app lets players pick their name (no password, like a
-Tricount group link — add players via the CLI first), edit their own list,
-and add games (search the catalog, else RAWG, confirm flags/hours/Steam
-match). Every write pulls, then commits+pushes `data/` itself.
+Run the site locally:
 
 ```
-pip install -r requirements-web.txt
-FLASK_SECRET_KEY=<random> python3 -m web.app   # dev server, localhost:5000
+GAMECLUB_GIT_PUSH=0 FLASK_SECRET_KEY=dev .venv/bin/python -m web.app
 ```
 
-Env vars: `GAMECLUB_DATA` (default `data`), `GAMECLUB_GIT_PUSH=0` to disable
-the push (commits still happen), `FLASK_SECRET_KEY` (required to keep
-sessions valid across restarts).
+### Environment variables
 
-### Deploying (Render, free tier)
+| Variable | Used for |
+|---|---|
+| `RAWG_API_KEY` | game search and metadata |
+| `FLASK_SECRET_KEY` | signing the name-picker cookie; any random string |
+| `GAMECLUB_DATA` | data directory (default `data`) |
+| `GAMECLUB_GIT_PUSH` | `0` to only commit locally (no pull/push) |
+| `GITHUB_TOKEN` | Render only: lets the app clone and push the repo |
+| `SITE_URL` | public URL of the site, for links in Discord messages |
+| `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY` | Discord integration |
+| `DISCORD_PLAYERS` | JSON `{"<discord user id>": "<player id>"}` |
+| `DISCORD_ADMINS` | comma-separated Discord user ids allowed to draw/close |
+| `DISCORD_WEBHOOK_URL` | CLI only: where `draw` posts its announcement |
 
-Render's free web services have no persistent disk (wiped on every restart
-or spin-down after 15min idle), so `render-start.sh` re-clones `data/` and
-its git history fresh on every boot over HTTPS with a token, instead of
-relying on whatever Render itself checked out to build the app. Every
-write already commits+pushes before responding, so GitHub stays the real
-source of truth and a fresh clone is always current. One-time setup:
+### Deploying on Render (free tier)
 
-1. Push this repo to GitHub (already done, `main`).
-2. On [render.com](https://render.com): New → Blueprint, point it at this
-   repo. It reads `render.yaml` and creates the web service.
-3. In the Render dashboard, set these env vars (they stay secret, never go
-   in the repo):
-   - `GITHUB_TOKEN` — a GitHub **fine-grained personal access token**,
-     scoped to only this repo, with Contents: Read and write permission.
-   - `FLASK_SECRET_KEY` — any random string (e.g. `openssl rand -hex 32`).
-   - `RAWG_API_KEY` — your RAWG key, for the "find online" game search.
-4. Deploy. First load after idle takes about a minute (cold start +
-   re-clone); fine for occasional use by a few friends.
+Render's free tier has no persistent disk: the file system is wiped on
+every restart, and the service sleeps after 15 minutes idle (about a
+minute to wake up). So `render-start.sh` clones the repo fresh at every
+boot, using a GitHub token, and the app pushes every change straight back.
+GitHub is the real storage; the server's copy is disposable.
 
-I can't create the Render account, GitHub token, or set secrets for you —
-those need your own logins.
+1. Fork or push this repo to your own GitHub account.
+2. On Render: **New → Blueprint**, select the repo. `render.yaml` creates
+   the web service.
+3. In the service's **Environment** tab, set `GITHUB_TOKEN` (a
+   fine-grained token for this repo only, with *Contents: read and write*),
+   `FLASK_SECRET_KEY` and `RAWG_API_KEY`. Update `REPO_URL` in
+   `render-start.sh` to point at your repo.
+4. **Turn Auto-Deploy off.** The app pushes to the repo on every player
+   action; with auto-deploy on, each one would redeploy the live service.
+   Deploy manually (**Manual Deploy → Deploy latest commit**) when the
+   code changes.
 
-## Discord
+### Adding Discord
 
-The same Flask app answers Discord slash commands (`/add`, `/remove`,
-`/star`, `/ready`, `/list`, `/status`, and admin-only `/draw`, `/close`).
-Discord POSTs each command to `/discord/interactions`; no separate bot
-process. One-time setup:
-
-1. Create the server (Discord app → "+" → Create My Own).
-2. [discord.com/developers/applications](https://discord.com/developers/applications)
-   → New Application ("Game Club"). On **General Information**, copy the
-   **Application ID** and **Public Key**.
-3. **Bot** tab → Reset Token → copy the **bot token** (only needed to
-   register commands; keep it out of the repo).
-4. **Installation** (or OAuth2 → URL Generator): scopes `bot` and
-   `applications.commands`, no permissions. Open the URL, add it to your
-   server.
-5. In Discord: User Settings → Advanced → Developer Mode on. Then
-   right-click the server → Copy Server ID, and right-click each friend →
-   Copy User ID.
-6. In Render, set env vars:
-   - `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY` (from step 2)
-   - `DISCORD_PLAYERS`: `{"<discord user id>": "<player id>", ...}`, with
-     player ids as in `data/club.json` (e.g. `"Leno"`). Kept out of the
-     public repo on purpose.
-   - `DISCORD_ADMINS`: comma-separated Discord user ids allowed to
-     `/draw` and `/close`.
-   - `SITE_URL`: the Render URL, for links in messages.
-
-   Then deploy the latest commit.
-7. Back on **General Information**, set **Interactions Endpoint URL** to
-   `<SITE_URL>/discord/interactions` and save (Discord sends a signed
-   test ping; saving fails if the app isn't answering it).
-8. Register the commands (from your laptop, once and after command
-   changes):
-
+1. Create a Discord server, and an application on the
+   [developer portal](https://discord.com/developers/applications).
+   From **General Information**, note the **Application ID** and
+   **Public Key**. From **Bot**, reset and copy the **bot token** (needed
+   once, to register commands; never commit it).
+2. Invite the app to your server by opening this URL while logged in, then
+   choosing the server:
+   ```
+   https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=0
+   ```
+3. In Discord, turn on **User Settings → Advanced → Developer Mode**. Then
+   right-click the server icon → **Copy Server ID**, and right-click each
+   member → **Copy User ID**. (Members who aren't linked yet get their
+   own id in the bot's reply, so they can send it to you.)
+4. On Render, set `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY`,
+   `DISCORD_PLAYERS` (e.g. `{"123456789012345678": "alice"}`, player ids
+   as in `data/club.json`), `DISCORD_ADMINS` and `SITE_URL`, then deploy.
+5. In the developer portal, set **Interactions Endpoint URL** to
+   `<SITE_URL>/discord/interactions` and save. Discord sends a signed test
+   request; saving only works if the site is up and answers it, so open
+   `<SITE_URL>/healthz` first to wake it.
+6. Register the commands from your machine (again whenever they change):
    ```
    DISCORD_APPLICATION_ID=... DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... \
-       python3 -m web.discord_register
+       .venv/bin/python -m web.discord_register
    ```
-9. Keep the app awake: Render's free tier sleeps after 15min and takes
-   ~1min to wake, longer than Discord's 3s limit. Point a free uptime
-   pinger (UptimeRobot, cron-job.org) at `<SITE_URL>/healthz` every 10
-   minutes. One always-on service fits Render's 750 free hours/month.
-
-## Layout
-
-```
-gameclub/draw.py     draw logic (pure functions, no I/O)
-gameclub/store.py    JSON data files
-gameclub/rounds.py   running and announcing a round
-gameclub/rawg.py     game metadata (RAWG)
-gameclub/prices.py   prices + search (Steam store)
-gameclub/cli.py      command line
-web/app.py           entry site (Flask)
-web/club.py          shared data access + list actions (site, Discord)
-web/discord_bot.py   Discord slash commands (interactions endpoint)
-web/discord_register.py  registers the commands on the server
-web/git_sync.py      pull/commit/push data/
-tests/               unit tests
-data/                club data as JSON
-```
+7. Keep the service awake: a sleeping service takes about a minute to
+   answer, past Discord's 3 second limit. Point a free uptime monitor
+   (UptimeRobot, cron-job.org) at `<SITE_URL>/healthz` every 10 minutes.
+   A single always-on service fits within Render's 750 free hours a month.
 
 ## Development
 
 ```
-python3 -m unittest -v
-python3 -m mypy --strict gameclub web tests
-python3 -m flake8 gameclub web tests
+.venv/bin/python -m unittest -v
+.venv/bin/mypy --strict gameclub web tests
+.venv/bin/flake8 gameclub web tests
 ```
 
-`web` needs Flask (`pip install -r requirements-web.txt`) for the tests and
-type checks to pass.
+Tests run without network access: RAWG, Steam and Discord are mocked, and
+git sync is tested against throwaway local repositories.
+
+### Known limits
+
+- RAWG's co-op/indie flags and playtime are trusted as-is when a game is
+  added; the admin can fix them with `game set`.
+- Steam prices use unofficial store endpoints; games not on Steam have no
+  price.
+- The Discord integration is tested against hand-written payloads, and
+  only lightly in real use so far.
+- A round stores the list contents as game ids. If a game's flags are
+  edited after a draw, re-running that draw's seed may not reproduce it.

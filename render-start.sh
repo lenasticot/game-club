@@ -20,5 +20,7 @@ export GAMECLUB_DATA="$CLONE_DIR/data"
 export GAMECLUB_GIT_PUSH=1
 
 # One worker: git_sync's write lock is in-process only, so concurrent
-# workers could race on the same clone.
-exec gunicorn -w 1 -b "0.0.0.0:${PORT}" "web.app:create_app()"
+# workers could race on the same clone. Threads instead, so slow Discord
+# autocomplete calls (RAWG search, one per keystroke) can't queue up in
+# front of a command past Discord's 3s limit.
+exec gunicorn -w 1 --threads 8 -b "0.0.0.0:${PORT}" "web.app:create_app()"
