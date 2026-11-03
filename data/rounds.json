@@ -1,1 +1,50 @@
-[]
+[
+  {
+    "number": 1,
+    "seed": "5bbeee34003766dd",
+    "drawn_at": "2026-11-03T18:08:31+00:00",
+    "status": "drawn",
+    "meeting_date": null,
+    "sitting": [
+      "Vincent"
+    ],
+    "lists": {
+      "Vincent": [
+        "truck-simulator-2",
+        "call-of-duty-vanguard",
+        "train-simulator"
+      ],
+      "Leno": [
+        "hades-ii",
+        "it-takes-two-2",
+        "spyro-the-dragon-2007",
+        "tales-of-symphonia-2003"
+      ],
+      "Steph": [
+        "worms-armageddon",
+        "tron"
+      ],
+      "Brandon": [
+        "pirate-2",
+        "age-of-empires-iii-complete-collection"
+      ]
+    },
+    "picks": [
+      {
+        "slot": "coop",
+        "player": "Steph",
+        "game_id": "worms-armageddon"
+      },
+      {
+        "slot": "indie",
+        "player": "Leno",
+        "game_id": "hades-ii"
+      },
+      {
+        "slot": "free",
+        "player": "Brandon",
+        "game_id": "pirate-2"
+      }
+    ]
+  }
+]

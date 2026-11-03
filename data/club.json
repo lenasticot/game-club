@@ -33,12 +33,17 @@
       "active": true
     }
   ],
-  "rotations": [],
+  "rotations": [
+    {
+      "start_round": 1,
+      "order": [
+        "Vincent",
+        "Leno",
+        "Steph",
+        "Brandon"
+      ]
+    }
+  ],
   "price_country": "nl",
-  "finalized": [
-    "Brandon",
-    "Vincent",
-    "Leno",
-    "Steph"
-  ]
+  "finalized": []
 }
