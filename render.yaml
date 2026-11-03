@@ -12,5 +12,15 @@ services:
         sync: false
       - key: RAWG_API_KEY
         sync: false
+      - key: SITE_URL
+        sync: false
+      - key: DISCORD_PUBLIC_KEY
+        sync: false
+      - key: DISCORD_APPLICATION_ID
+        sync: false
+      - key: DISCORD_PLAYERS
+        sync: false
+      - key: DISCORD_ADMINS
+        sync: false
       - key: PYTHONUNBUFFERED
         value: "1"

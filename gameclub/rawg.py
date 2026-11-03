@@ -32,19 +32,20 @@ class RawgError(Exception):
     pass
 
 
-def _get(path: str, params: Optional[dict[str, str]] = None) -> Any:
+def _get(path: str, params: Optional[dict[str, str]] = None,
+         timeout: float = 15) -> Any:
     key = os.environ.get("RAWG_API_KEY")
     if not key:
         raise RawgError("set RAWG_API_KEY (free key from rawg.io/apidocs)")
     query = urllib.parse.urlencode({**(params or {}), "key": key})
     req = urllib.request.Request(f"{API}{path}?{query}",
                                  headers={"User-Agent": "game-club"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.load(resp)
 
 
-def search(query: str) -> list[dict[str, Any]]:
-    data = _get("/games", {"search": query, "page_size": "8"})
+def search(query: str, timeout: float = 15) -> list[dict[str, Any]]:
+    data = _get("/games", {"search": query, "page_size": "8"}, timeout)
     return [{"id": r["id"], "slug": r["slug"], "name": r["name"],
              "released": r.get("released"),
              "background_image": r.get("background_image")}

@@ -34,14 +34,15 @@ python3 -m gameclub round close 1                # after the meeting
 ```
 
 Set `DISCORD_WEBHOOK_URL` to post draws to Discord. Commit `data/` after
-each change.
+each change and push it: the live app pulls before every write and every
+30s on reads, so it picks your change up.
 
 ## Entry site
 
 A small Flask app lets players pick their name (no password, like a
 Tricount group link — add players via the CLI first), edit their own list,
 and add games (search the catalog, else RAWG, confirm flags/hours/Steam
-match). Every write commits+pushes `data/` itself.
+match). Every write pulls, then commits+pushes `data/` itself.
 
 ```
 pip install -r requirements-web.txt
@@ -76,6 +77,50 @@ source of truth and a fresh clone is always current. One-time setup:
 I can't create the Render account, GitHub token, or set secrets for you —
 those need your own logins.
 
+## Discord
+
+The same Flask app answers Discord slash commands (`/add`, `/remove`,
+`/star`, `/ready`, `/list`, `/status`, and admin-only `/draw`, `/close`).
+Discord POSTs each command to `/discord/interactions`; no separate bot
+process. One-time setup:
+
+1. Create the server (Discord app → "+" → Create My Own).
+2. [discord.com/developers/applications](https://discord.com/developers/applications)
+   → New Application ("Game Club"). On **General Information**, copy the
+   **Application ID** and **Public Key**.
+3. **Bot** tab → Reset Token → copy the **bot token** (only needed to
+   register commands; keep it out of the repo).
+4. **Installation** (or OAuth2 → URL Generator): scopes `bot` and
+   `applications.commands`, no permissions. Open the URL, add it to your
+   server.
+5. In Discord: User Settings → Advanced → Developer Mode on. Then
+   right-click the server → Copy Server ID, and right-click each friend →
+   Copy User ID.
+6. In Render, set env vars:
+   - `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY` (from step 2)
+   - `DISCORD_PLAYERS`: `{"<discord user id>": "<player id>", ...}`, with
+     player ids as in `data/club.json` (e.g. `"Leno"`). Kept out of the
+     public repo on purpose.
+   - `DISCORD_ADMINS`: comma-separated Discord user ids allowed to
+     `/draw` and `/close`.
+   - `SITE_URL`: the Render URL, for links in messages.
+
+   Then deploy the latest commit.
+7. Back on **General Information**, set **Interactions Endpoint URL** to
+   `<SITE_URL>/discord/interactions` and save (Discord sends a signed
+   test ping; saving fails if the app isn't answering it).
+8. Register the commands (from your laptop, once and after command
+   changes):
+
+   ```
+   DISCORD_APPLICATION_ID=... DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... \
+       python3 -m web.discord_register
+   ```
+9. Keep the app awake: Render's free tier sleeps after 15min and takes
+   ~1min to wake, longer than Discord's 3s limit. Point a free uptime
+   pinger (UptimeRobot, cron-job.org) at `<SITE_URL>/healthz` every 10
+   minutes. One always-on service fits Render's 750 free hours/month.
+
 ## Layout
 
 ```
@@ -86,7 +131,10 @@ gameclub/rawg.py     game metadata (RAWG)
 gameclub/prices.py   prices + search (Steam store)
 gameclub/cli.py      command line
 web/app.py           entry site (Flask)
-web/git_sync.py      commit+push data/ after a web write
+web/club.py          shared data access + list actions (site, Discord)
+web/discord_bot.py   Discord slash commands (interactions endpoint)
+web/discord_register.py  registers the commands on the server
+web/git_sync.py      pull/commit/push data/
 tests/               unit tests
 data/                club data as JSON
 ```

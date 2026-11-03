@@ -1,28 +1,29 @@
 """Flask app: identity picker, list editing, game search/add.
 
 No passwords: picking a name sets a signed session cookie, like a
-Tricount group link. Every write loads a fresh Store, changes it,
-saves, and commits+pushes via git_sync (in a background thread, so the
-request doesn't wait on the network) so data/ (the source of truth)
-stays in sync with the live site.
+Tricount group link. Reads and writes go through web.club.Club, which
+keeps data/ in sync with GitHub (the source of truth). The Discord
+interactions endpoint (web/discord_bot.py) is mounted here too.
 """
 
+import json
 import os
 import random
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from flask import (Flask, abort, jsonify, redirect, render_template,
-                   request, session, url_for)
+from flask import (Flask, jsonify, redirect, render_template, request,
+                   session, url_for)
 from flask.typing import ResponseReturnValue
 
 from gameclub import prices, rawg
-from gameclub.draw import MAX_LIST_SIZE, DrawError, validate_submission
+from gameclub.draw import MAX_LIST_SIZE, DrawError
 from gameclub.rounds import SLOT_LABELS
 from gameclub.store import GameRec, Store, StoreError
-from web import git_sync
+from web import club as actions
+from web import discord_bot
+from web.club import Club
 
 REEL_FILLER_CAP = 10
 
@@ -37,28 +38,13 @@ def create_app(data_dir: Optional[Path] = None,
     app.config["DATA_DIR"] = data_dir or Path(
         os.environ.get("GAMECLUB_DATA", "data"))
     app.config["REPO_DIR"] = repo_dir or app.config["DATA_DIR"].parent
-    app.config["GIT_PUSH"] = os.environ.get("GAMECLUB_GIT_PUSH", "1") != "0"
+    club = Club(app.config["DATA_DIR"], app.config["REPO_DIR"],
+                remote=os.environ.get("GAMECLUB_GIT_PUSH", "1") != "0")
+    app.config["CLUB"] = club
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(32))
-    # Threads doing the actual commit+push, so tests can join() them instead
-    # of racing a background thread.
-    pending_syncs: list[threading.Thread] = []
-    app.config["PENDING_SYNCS"] = pending_syncs
 
     def store() -> Store:
-        return Store(app.config["DATA_DIR"])
-
-    def sync(message: str) -> None:
-        # git push is a slow network round-trip; don't make the player
-        # wait on it. The commit itself (inside commit_and_push) is fast
-        # and local, so data isn't lost even if the thread is slow - only
-        # a crash before it runs would lose this one push.
-        t = threading.Thread(
-            target=git_sync.commit_and_push,
-            args=(app.config["REPO_DIR"], message),
-            kwargs={"push": app.config["GIT_PUSH"]},
-            daemon=True)
-        t.start()
-        pending_syncs.append(t)
+        return club.read()
 
     def current_player(s: Store) -> Optional[str]:
         pid = session.get("player_id")
@@ -66,13 +52,15 @@ def create_app(data_dir: Optional[Path] = None,
             return pid
         return None
 
-    def unfinalize(s: Store, pid: str) -> None:
-        # Any list edit invalidates a previous "I'm done".
-        s.set_finalized(pid, False)
+    def me() -> str:
+        pid = session.get("player_id")
+        assert isinstance(pid, str)  # checked by _require_identity
+        return pid
 
     @app.before_request
     def _require_identity() -> Optional[ResponseReturnValue]:
-        if request.endpoint in ("whoami", "static"):
+        if request.endpoint in ("whoami", "static", "healthz",
+                                "discord_interactions"):
             return None
         s = store()
         if current_player(s) is None:
@@ -127,74 +115,40 @@ def create_app(data_dir: Optional[Path] = None,
 
     @app.route("/list/add", methods=["POST"])
     def list_add() -> ResponseReturnValue:
-        s = store()
-        pid = current_player(s)
-        assert pid is not None
-        game_id = request.form["game_id"]
-        s.game(game_id)  # 404-ish StoreError if unknown
-        entries = s.submissions.get(pid, [])
-        if any(e["game_id"] == game_id for e in entries):
-            return redirect(url_for("home"))
-        if len(entries) >= MAX_LIST_SIZE:
-            abort(400, f"list already has {MAX_LIST_SIZE} games")
-        entries.append({"game_id": game_id, "priority": False})
-        s.submissions[pid] = entries
-        unfinalize(s, pid)
-        s.save()
-        sync(f"{pid}: add {game_id} to list")
+        pid, game_id = me(), request.form["game_id"]
+        with club.write(f"{pid}: add {game_id} to list") as s:
+            actions.add_to_list(s, pid, game_id)
         return redirect(url_for("home"))
 
     @app.route("/list/remove", methods=["POST"])
     def list_remove() -> ResponseReturnValue:
-        s = store()
-        pid = current_player(s)
-        assert pid is not None
-        game_id = request.form["game_id"]
-        s.submissions[pid] = [e for e in s.submissions.get(pid, [])
-                              if e["game_id"] != game_id]
-        unfinalize(s, pid)
-        s.save()
-        sync(f"{pid}: remove {game_id} from list")
+        pid, game_id = me(), request.form["game_id"]
+        with club.write(f"{pid}: remove {game_id} from list") as s:
+            actions.remove_from_list(s, pid, game_id)
         return redirect(url_for("home"))
 
     @app.route("/list/priority", methods=["POST"])
     def list_priority() -> ResponseReturnValue:
-        s = store()
-        pid = current_player(s)
-        assert pid is not None
-        game_id = request.form["game_id"]
-        s.submissions[pid] = [
-            {"game_id": e["game_id"], "priority": e["game_id"] == game_id}
-            for e in s.submissions.get(pid, [])
-        ]
-        unfinalize(s, pid)
-        s.save()
-        sync(f"{pid}: set priority to {game_id}")
+        pid, game_id = me(), request.form["game_id"]
+        with club.write(f"{pid}: set priority to {game_id}") as s:
+            actions.set_priority(s, pid, game_id)
         return redirect(url_for("home"))
 
     @app.route("/list/finalize", methods=["POST"])
     def list_finalize() -> ResponseReturnValue:
-        s = store()
-        pid = current_player(s)
-        assert pid is not None
+        pid = me()
         try:
-            validate_submission(pid, s.list_games(pid), s.played())
+            with club.write(f"{pid}: finalized list") as s:
+                actions.finalize(s, pid)
         except DrawError as e:
             session["finalize_error"] = str(e)
-            return redirect(url_for("home"))
-        s.set_finalized(pid, True)
-        s.save()
-        sync(f"{pid}: finalized list")
         return redirect(url_for("home"))
 
     @app.route("/games/new")
     def games_new() -> ResponseReturnValue:
         s = store()
         slug = request.args["slug"]
-        try:
-            draft = rawg.fetch(slug, now_iso())
-        except rawg.RawgError as e:
-            abort(400, str(e))
+        draft = rawg.fetch(slug, now_iso())
         steam_matches: list[prices.SteamMatch] = []
         if draft["steam_appid"] is None:
             try:
@@ -207,36 +161,18 @@ def create_app(data_dir: Optional[Path] = None,
 
     @app.route("/games/new", methods=["POST"])
     def games_add() -> ResponseReturnValue:
+        pid, slug = me(), request.form["slug"]
         s = store()
-        pid = current_player(s)
-        assert pid is not None
-        slug = request.form["slug"]
         if s.has_game(slug):
             game = s.game(slug)
         else:
-            try:
-                game = rawg.fetch(slug, now_iso())
-            except rawg.RawgError as e:
-                abort(400, str(e))
+            # The form always carries RAWG's own appid (hidden field) or
+            # the player's pick; empty means no Steam price.
             appid = request.form.get("steam_appid", "").strip()
-            if appid:
-                game["steam_appid"] = int(appid)
-            if game["steam_appid"] is not None:
-                try:
-                    game["price"] = prices.steam_price(
-                        game["steam_appid"], s.price_country, now_iso())
-                except OSError:
-                    game["price"] = None
-            s.add_game(game)
-        entries = s.submissions.get(pid, [])
-        if not any(e["game_id"] == game["id"] for e in entries):
-            if len(entries) >= MAX_LIST_SIZE:
-                abort(400, f"list already has {MAX_LIST_SIZE} games")
-            entries.append({"game_id": game["id"], "priority": False})
-            s.submissions[pid] = entries
-            unfinalize(s, pid)
-        s.save()
-        sync(f"{pid}: add new game {game['id']}")
+            game = actions.fetch_game(slug, int(appid) if appid else None,
+                                      s.price_country, now_iso())
+        with club.write(f"{pid}: add new game {game['id']}") as s:
+            actions.add_game_to_list(s, pid, game)
         return redirect(url_for("home"))
 
     @app.route("/players")
@@ -294,12 +230,45 @@ def create_app(data_dir: Optional[Path] = None,
         return render_template("round.html", round=rec, sitting=sitting,
                                slots=slots)
 
+    @app.route("/healthz")
+    def healthz() -> ResponseReturnValue:
+        # For an external pinger keeping the free Render instance awake,
+        # so Discord commands don't hit a ~1min cold start.
+        return "ok"
+
     @app.errorhandler(StoreError)
     @app.errorhandler(DrawError)
+    @app.errorhandler(rawg.RawgError)
     def _store_error(e: Exception) -> tuple[str, int]:
         return str(e), 400
 
+    public_key = os.environ.get("DISCORD_PUBLIC_KEY")
+    if public_key:
+        discord_bot.mount(app, discord_bot.Bot(
+            club,
+            public_key=public_key,
+            app_id=os.environ["DISCORD_APPLICATION_ID"],
+            players=discord_players(club.store()),
+            admins=set(os.environ.get("DISCORD_ADMINS", "").split(",")) - {""},
+            site_url=os.environ.get("SITE_URL", "").rstrip("/"),
+        ))
+
     return app
+
+
+def discord_players(s: Store) -> dict[str, str]:
+    """Discord user id -> player id.
+
+    From the DISCORD_PLAYERS env var on the server (JSON object), since
+    player_secrets.json is gitignored and so missing from the live clone;
+    the local secrets file is used too, for dev.
+    """
+    mapping = {sec["discord_id"]: pid for pid, sec in s.secrets.items()
+               if sec.get("discord_id")}
+    raw = os.environ.get("DISCORD_PLAYERS")
+    if raw:
+        mapping.update(json.loads(raw))
+    return {str(k): v for k, v in mapping.items() if k}
 
 
 if __name__ == "__main__":

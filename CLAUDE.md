@@ -108,6 +108,21 @@ The `gh` CLI is not installed; SSH auth to GitHub works.
   snapshot, spinning/scrolling and decelerating slot-machine style to land
   on the drawn game. Plain CSS transition + JS-computed offset, no library.
 
+- **Discord = hybrid with the site** (2026-11-03). Slash commands for quick
+  actions (`/add` with catalog+RAWG autocomplete then Steam-match card,
+  `/remove`, `/star`, `/ready`, `/list`, `/status`), adds/ready announced
+  publicly in the channel. Admin `/draw` and `/close` from Discord too
+  (reverses "draw stays CLI-only"); draw picks posted behind spoilers so
+  the site's `/round` reveal still matters. Site keeps the visual side.
+  HTTP interactions endpoint in the same Flask app, not a gateway bot.
+  Discord ids → player in the `DISCORD_PLAYERS` env var (private), admins
+  in `DISCORD_ADMINS`.
+- **Two writers sync through GitHub** (2026-11-03): the live app pulls
+  (`--rebase`) before every write and at most every 30s on reads; pushes
+  retry once after a rebase. Found when the first CLI draw was invisible
+  to the live site (app cloned once at boot, never pulled; its next push
+  would have been rejected silently).
+
 ## Planned stack (MVP)
 
 - Python, data as JSON files in the repo (git = history/audit trail).
@@ -175,10 +190,20 @@ cover-reel per slot, landing on the real pick — verified live). Git push
 is async (background thread) so a write doesn't block on the network;
 commit stays sync so data is never at risk. Render boot script
 (`render-start.sh`) clones via HTTPS+token, no persistent disk needed.
-40 tests passing, `mypy --strict` and `flake8` clean (`gameclub`, `web`,
-`tests`).
+**Round 1 drawn 2026-11-03** (CLI, pushed): Vincent sits out; Worms
+Armageddon (co-op, Steph), Hades II (indie, Leno), Pirate (free, Brandon).
+Discord layer built 2026-11-03 (`web/club.py` shared actions + sync,
+`web/discord_bot.py`, `web/discord_register.py`), tested on hand-written
+payloads only: never run against real Discord yet.
+53 tests passing (in `.venv`), `mypy --strict` and `flake8` clean
+(`gameclub`, `web`, `tests`).
 
 Next:
+- **Discord go-live**: user creates server + app, sets Render env vars,
+  interactions URL, runs `web.discord_register`, sets up a `/healthz`
+  pinger (README "Discord"). Then check live: autocomplete speed (RAWG
+  in <3s), ephemeral reply + public followup, editing the message on
+  button clicks — all unverified against real Discord.
 - **UI/visual design pass** — explicitly not done yet, player feedback
   2026-10-16 ("we will have to work on the overall rendering"). Next
   session: use a design-focused agent/subagent for this, not ad-hoc CSS

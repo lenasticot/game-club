@@ -70,7 +70,7 @@ def run_draw(store: Store, seed: str, now: str) -> RoundRec:
     return rec
 
 
-def _game_line(game: GameRec) -> str:
+def game_line(game: GameRec) -> str:
     bits = []
     if game["genres"]:
         bits.append(", ".join(game["genres"][:3]))
@@ -95,7 +95,7 @@ def announcement(store: Store, rec: RoundRec) -> str:
         game = store.game(pick["game_id"])
         lines.append(f"{SLOT_LABELS[pick['slot']]}: **{game['title']}** "
                      f"(from {name(pick['player'])})")
-        detail = _game_line(game)
+        detail = game_line(game)
         if detail:
             lines.append(f"  {detail}")
     if not any(p["slot"] == "indie" for p in rec["picks"]):

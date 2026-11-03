@@ -1,8 +1,8 @@
 """Flask app tests: identity, list editing, game search/add.
 
 rawg.search/fetch and prices.steam_search/steam_price are mocked (no
-network, no RAWG_API_KEY needed). git_sync runs for real against a
-throwaway local repo, with push disabled, so a commit actually
+network, no RAWG_API_KEY needed). git commits run for real against a
+throwaway local repo, with pull/push disabled, so a commit actually
 happening is checked, not just assumed.
 """
 
@@ -45,30 +45,18 @@ class TestWeb(unittest.TestCase):
         _git(self.repo, "add", "-A")
         _git(self.repo, "commit", "-q", "-m", "seed")
 
-        self.app = create_app(data_dir=self.data, repo_dir=self.repo)
-        self.app.config["GIT_PUSH"] = False
+        with patch.dict("os.environ", {"GAMECLUB_GIT_PUSH": "0"}):
+            self.app = create_app(data_dir=self.data, repo_dir=self.repo)
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def _wait_for_sync(self) -> None:
-        # Commits happen in a background thread (web/app.py's sync()).
-        # Join after every write so two quick writes can't race each
-        # other's git commit (and so log() below sees a settled state).
-        pending = self.app.config["PENDING_SYNCS"]
-        for t in pending:
-            t.join(timeout=5)
-        pending.clear()
-
     def post(self, url: str, **kwargs: Any) -> TestResponse:
-        r = self.client.post(url, **kwargs)
-        self._wait_for_sync()
-        return r
+        return self.client.post(url, **kwargs)
 
     def log(self) -> str:
-        self._wait_for_sync()
         return subprocess.run(
             ["git", "log", "--oneline"], cwd=self.repo,
             capture_output=True, text=True, check=True).stdout
